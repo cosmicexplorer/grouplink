@@ -1,0 +1,8 @@
+[package]
+name = "prototype"
+version = "0.1.0"
+authors = ["cosmicexplorer"]
+edition = "2018"
+
+[build-dependencies]
+spack = { path = "spack" }
