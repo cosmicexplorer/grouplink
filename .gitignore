@@ -1,7 +1,6 @@
+# OSX files
 .DS_Store
-
-# Added by cargo
-#
-# already existing elements were commented out
-
+# Cargo output
 /target
+# Spack per-host output
+.spack-env/
