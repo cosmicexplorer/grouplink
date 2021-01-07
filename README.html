@@ -1,0 +1,83 @@
+<h1 id="grouplink">grouplink</h1>
+<p>We want to build two prototypes of a cryptosystem to support <strong>anonymous, group-fungible identities</strong>. <em>Eventually,</em> our goal is to additionally support <strong>forward-secret verification</strong> and <strong>legacy GPG interop</strong>. We propose to build this on top of the Signal double ratchet <a href="https://signal.org/docs/specifications/doubleratchet/">^double-ratchet</a> and X3DH algorithms <a href="https://signal.org/docs/specifications/x3dh/">^x3dh</a> as follows:</p>
+<ol type="1">
+<li><a href="#minimal"><em>minimal:</em></a> use the Signal Protocol (and its constituent algorithms) unchanged, but add endpoints for creating a special new class of <em>group-fungible</em> identities.</li>
+<li><a href="#full"><em>full:</em></a> replace a Signal <em>UserID</em> with an anonymous identity, and allow all operations to be group-fungible.</li>
+</ol>
+<p>The above will be implemented via a CLI tool in Rust, without any concept of a central server yet. We then would like to add:</p>
+<ol start="3" type="1">
+<li><a href="#gpg"><em>gpg:</em></a> expose a group message type which creates ephemeral gpg keys for signing, encryption, and/or decryption.</li>
+</ol>
+<p>We finally reconstitute this cryptosystem into a messaging system:</p>
+<ol start="4" type="1">
+<li><a href="#live"><em>live:</em></a> make a server which supports our modified "grouplink" protocol.</li>
+</ol>
+<h1 id="minimal">Minimal</h1>
+<ul class="task-list">
+<li><input type="checkbox" disabled="" />
+Add an "endpoint" to the Signal Protocol to create a new <em>group-fungible</em> identity, which doesn't do anything yet.</li>
+<li><input type="checkbox" disabled="" />
+Add corresponding endpoints for:<ul class="task-list">
+<li><input type="checkbox" disabled="" />
+Adding another such identity to the group.</li>
+<li><input type="checkbox" disabled="" />
+Sending a message <em>to</em> the group.</li>
+<li><input type="checkbox" disabled="" />
+Sending a message <em>as</em> the group (hence making it "group-fungible").</li>
+</ul></li>
+</ul>
+<h2 id="completion-criteria">Completion Criteria</h2>
+<p>Encrypted messages can be sent between group-fungible identities in a test case.</p>
+<h1 id="full">Full</h1>
+<ul class="task-list">
+<li><input type="checkbox" disabled="" />
+Modify the Signal Protocol library [^libsignal-protocol-c] to use <em>group-fungible</em> identities instead of <em>UserID</em>s.</li>
+<li><input type="checkbox" disabled="" />
+Make it work in a CLI tool.<ul>
+<li>i.e. externalize the identities and message keys into concrete files.</li>
+</ul></li>
+</ul>
+<h2 id="completion-criteria-1">Completion Criteria</h2>
+<p>A Rust CLI tool can create and send group-fungible messages with a modified version of the Signal Protocol library.</p>
+<h1 id="gpg">GPG</h1>
+<ul class="task-list">
+<li><input type="checkbox" disabled="" />
+Create a group message type which produces a public/private GPG key pair.<ul>
+<li>This should be very similar to the result of a "DH ratchet" step in the double ratchet protocol <a href="https://signal.org/docs/specifications/doubleratchet/">^double-ratchet</a>.</li>
+<li>This should use <code>libgcrypt</code> <a href="https://en.wikipedia.org/wiki/Libgcrypt">^libgcrypt</a>.</li>
+</ul></li>
+<li><input type="checkbox" disabled="" />
+This should be parameterizable by sign/encrypt/decrypt.</li>
+<li><input type="checkbox" disabled="" />
+This should produce all necessary keys to send an encrypted message from one group to another.</li>
+<li><input type="checkbox" disabled="" />
+This should upload all generated public keys to a keyserver.</li>
+<li><input type="checkbox" disabled="" />
+This should interop with static GPG identities.</li>
+</ul>
+<h2 id="completion-criteria-2">Completion Criteria</h2>
+<p>Ephemeral GPG identities can be created and used for:</p>
+<ol type="1">
+<li>[ ] <strong>forward-secret signatures</strong></li>
+<li>[ ] <strong>legacy GPG interop</strong></li>
+</ol>
+<h1 id="live">Live</h1>
+<ul class="task-list">
+<li><input type="checkbox" disabled="" />
+Create a server implementing the above "grouplink" protocol with GPG support, either by:<ul>
+<li>modifying the Signal Server [^todo-signal-server-security-guarantees] to invoke the rust CLI tool.</li>
+<li><em>(preferred)</em> creating a rust server which extends the code from the CLI tool.</li>
+</ul></li>
+</ul>
+<h2 id="completion-criteria-3">Completion Criteria</h2>
+<p>An arbitrary device can perform the operations of the grouplink protocol with GPG support by sending encrypted requests to an external server process.</p>
+<h1 id="footnotes">Footnotes</h1>
+<p>[^todo-verify-UUID-uniqueness]: TODO: when is this ever a problem?</p>
+<p>[^todo-ssl-sufficient]: TODO: is https/SSL sufficient?</p>
+<p>[^todo-threat-model-ratchet]: TODO: threat model this! How does this interact with the ratcheting $SecretIdentity$?</p>
+<p>[^todo-keyserver-redundant]: TODO: does this need to use the keyserver?</p>
+<p>[^todo-thread-model-fake-keyserver]: TODO: threat model this! Do we need to worry about fake keyserver data?</p>
+<p>[^todo-canonically-describe-anon-identities]: TODO: find/write a good canonical description of anonymous identities!</p>
+<p>[^todo-gc-entries-avoid-plaintext]: TODO: this should probably try to gc entries referring to the deleted identity, but we really want to avoid retaining any plaintext data which can link entries across the database in general. This is probably a difficult topic and has some prior art we can refer to.</p>
+<p>[^todo-evaluate-whether-pure-stateful-still-matter]: TODO: evaluate whether local &lt;=&gt; pure and remote &lt;=&gt; stateful still makes sense later!</p>
+<p>[^todo-signal-server-security-guarantees]: TODO: dive through the signal server and determine how they describe their own security guarantees: <a href="https://github.com/cosmicexplorer/Signal-Server">https://github.com/cosmicexplorer/Signal-Server</a></p>
