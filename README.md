@@ -6,9 +6,11 @@ We want to build two prototypes of a cryptosystem to support **anonymous, group-
 2. [*full:*](#full) replace a Signal *UserID* with an anonymous identity, and allow all operations to be group-fungible.
 
 The above will be implemented via a CLI tool in Rust, without any concept of a central server yet. We then would like to add:
+
 3. [*gpg:*](#gpg) expose a group message type which creates ephemeral gpg keys for signing, encryption, and/or decryption.
 
 We finally reconstitute this cryptosystem into a messaging system:
+
 4. [*live:*](#live) make a server which supports our modified "grouplink" protocol.
 
 # Minimal
@@ -29,7 +31,7 @@ Encrypted messages can be sent between group-fungible identities in a test case.
     - i.e. externalize the identities and message keys into concrete files.
 
 ## Completion Criteria
-A Rust CLI tool can create and send group-fungible messages.
+A Rust CLI tool can create and send group-fungible messages with a modified version of the Signal Protocol library.
 
 # GPG
 
