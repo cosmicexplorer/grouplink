@@ -1,5 +1,5 @@
 // Copyright 2021, Danny McClanahan
-// Licensed under the GNU GPL, Version 3.0 or any later version (see LICENSE).
+// Licensed under the GNU GPL, Version 3.0 or any later version (see COPYING).
 
 #![deny(warnings)]
 // Enable all clippy lints except for many of the pedantic ones. It's a shame this needs to be copied and pasted across crates, but there doesn't appear to be a way to include inner attributes from a common source.
