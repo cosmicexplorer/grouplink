@@ -1,8 +1,0 @@
-[package]
-name = "spack"
-version = "0.1.0"
-authors = ["cosmicexplorer"]
-edition = "2018"
-
-[dependencies]
-bindgen = "0.56"
