@@ -1,7 +1,7 @@
 grouplink
 =========
 
-We want to build two prototypes of a cryptosystem to support **anonymous, group-fungible identities**. *Eventually,* our goal is to additionally support **forward-secret verification** and **legacy GPG interop**. We have two proposals to build this on top of the Signal double ratchet [^double-ratchet] and X3DH algorithms [^x3dh], which we will attempt to prototype in order:
+We want to build two prototypes of a cryptosystem to support **anonymous, group-fungible identities**. *Eventually,* our goal is to additionally support **forward-secret verification** and **legacy GPG interop**. We propose to build this on top of the Signal double ratchet [^double-ratchet] and X3DH algorithms [^x3dh] as follows:
 1. [*minimal:*](#minimal) use the Signal Protocol (and its constituent algorithms) unchanged, but add endpoints for creating a special new class of *group-fungible* identities.
 2. [*full:*](#full) replace a Signal *UserID* with an anonymous identity, and allow all operations to be group-fungible.
 
