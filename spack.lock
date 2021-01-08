@@ -17,7 +17,7 @@
    "spec": "rust@1.48.0"
   },
   {
-   "hash": "xq5o2ukw7mlaxxmw4dhyas3ofaivkjt7",
+   "hash": "gufkkpxysdjwk7mxinvokghfsergcgbu",
    "spec": "rust-bindgen@0.56.0"
   }
  ],
@@ -2238,7 +2238,7 @@
     "hash": "hokorakix76snr2uz5km6yz64wlo7xw2"
    }
   },
-  "xq5o2ukw7mlaxxmw4dhyas3ofaivkjt7": {
+  "gufkkpxysdjwk7mxinvokghfsergcgbu": {
    "rust-bindgen": {
     "version": "0.56.0",
     "arch": {
@@ -2302,11 +2302,11 @@
       "hash": "4p2ji7mqg6ldqklzkvlxkx7mgilltqft",
       "type": [
        "build",
-       "link"
+       "run"
       ]
      }
     },
-    "hash": "ersur5pmj2ueyv4h6t5zknuq3sclalcn"
+    "hash": "63wkbewupkmfdz4tfqc576sziiwmvumr"
    }
   },
   "aq4ghvpi3vvyrslxzew6v6jmlbmf44zr": {

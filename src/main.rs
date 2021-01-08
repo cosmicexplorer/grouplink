@@ -29,6 +29,8 @@
 
 use std::io;
 
+mod group_fungible;
+
 pub fn main() -> io::Result<()> {
   let _f = group_fungible::GroupFungible;
   println!("ok");
