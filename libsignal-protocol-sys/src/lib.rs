@@ -27,20 +27,4 @@
 // Arc<Mutex> can be more clear than needing to grok Orderings:
 #![allow(clippy::mutex_atomic)]
 
-use std::io;
-
-pub fn main() -> io::Result<()> {
-  let _f = group_fungible::GroupFungible;
-  println!("ok");
-  Ok(())
-}
-
-#[cfg(test)]
-mod test {
-  use std::io;
-
-  #[test]
-  fn test_something() -> io::Result<()> {
-    Ok(())
-  }
-}
+pub use native_bindings::*;

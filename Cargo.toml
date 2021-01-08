@@ -1,9 +1,8 @@
 [package]
-name = "prototype"
+name = "grouplink"
 version = "0.1.0"
 authors = ["cosmicexplorer"]
 edition = "2018"
 
-[build-dependencies]
-
 [dependencies]
+libsignal-protocol-sys = { path = "./libsignal-protocol-sys" }

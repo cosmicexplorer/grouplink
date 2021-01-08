@@ -1,0 +1,8 @@
+[package]
+name = "libsignal-protocol-sys"
+version = "0.1.0"
+authors = ["cosmicexplorer"]
+edition = "2018"
+
+[build-dependencies]
+bindgen = "0.56.0"
