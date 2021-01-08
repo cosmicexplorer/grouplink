@@ -32,8 +32,9 @@ use std::io;
 mod group_fungible;
 
 pub fn main() -> io::Result<()> {
-  let _f = group_fungible::GroupFungible;
-  println!("ok");
+  let g = group_fungible::GroupFungible::new();
+  let buf: &[u8] = g.buf.as_ref().as_ref();
+  println!("ok: {}", std::str::from_utf8(buf).unwrap());
   Ok(())
 }
 
