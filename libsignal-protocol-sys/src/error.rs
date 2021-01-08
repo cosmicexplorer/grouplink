@@ -31,7 +31,7 @@ impl<E> UnknownError<E> {
 pub enum SignalError {
   NoMemory,
   InvalidArgument,
-  UnknownSignalProtocolError(UnknownError<i32>),
+  UnknownSignalProtocolError(UnknownError<ReturnCode>),
   DuplicateMessage,
   InvalidKey,
   InvalidKeyId,
@@ -46,16 +46,17 @@ pub enum SignalError {
   InvalidProtobuf,
   FPVersionMismatch,
   FPIdentMismatch,
-  UnknownClientApplicationError(UnknownError<i32>),
+  /* All of our own errors! */
+  ClientApplicationError(UnknownError<ReturnCode>),
 }
+
+type ReturnCode = i32;
+const SUCCESS: ReturnCode = SG_SUCCESS as ReturnCode;
 
 pub(crate) enum SignalNativeResult<T> {
   Success(T),
   Failure(SignalError),
 }
-
-type ReturnCode = i32;
-const SUCCESS: ReturnCode = SG_SUCCESS as ReturnCode;
 
 impl<T> SignalNativeResult<T> {
   pub fn success(arg: T) -> Self {
@@ -95,9 +96,9 @@ impl<T> SignalNativeResult<T> {
       x if x >= SG_ERR_MINIMUM => Self::fail(SignalError::UnknownSignalProtocolError(
         UnknownError::specific(x),
       )),
-      x => Self::fail(SignalError::UnknownClientApplicationError(
-        UnknownError::specific(x),
-      )),
+      x => Self::fail(SignalError::ClientApplicationError(UnknownError::specific(
+        x,
+      ))),
     }
   }
 }

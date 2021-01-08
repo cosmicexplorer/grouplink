@@ -21,7 +21,7 @@
 #![allow(
   clippy::len_without_is_empty,
   clippy::redundant_field_names,
-  clippy::too_many_arguments,
+  clippy::too_many_arguments
 )]
 // Default isn't as big a deal as people seem to think it is.
 #![allow(clippy::new_without_default, clippy::new_ret_no_self)]
@@ -86,48 +86,56 @@ pub mod handle {
   }
 }
 
-/* mod log_level { */
-/*   use super::error::SignalError; */
-/*   use super::gen::{SG_LOG_DEBUG, SG_LOG_ERROR, SG_LOG_INFO, SG_LOG_NOTICE, SG_LOG_WARNING}; */
+mod internal_error {
+  #[derive(Debug)]
+  pub enum InternalError {
+    InvalidLogLevel(crate::log_level::LogCode),
+    Unknown,
+  }
+}
 
-/*   type LogCode = u32; */
+pub mod log_level {
+  use super::gen::{SG_LOG_DEBUG, SG_LOG_ERROR, SG_LOG_INFO, SG_LOG_NOTICE, SG_LOG_WARNING};
+  use super::internal_error::InternalError;
 
-/*   #[derive(Debug)] */
-/*   pub enum Error { */
-/*     InvalidLogLevel(LogCode), */
-/*   } */
+  pub type LogCode = u32;
 
-/*   pub enum LogLevel { */
-/*     Error, */
-/*     Warning, */
-/*     Notice, */
-/*     Info, */
-/*     Debug, */
-/*   } */
+  #[derive(Debug)]
+  pub enum Error {
+    InvalidLogLevel(LogCode),
+  }
 
-/*   impl LogLevel { */
-/*     pub fn from_log_code(value: LogCode) -> Result<Self, SignalError> { */
-/*       match value { */
-/*         SG_LOG_ERROR => Ok(Self::Error), */
-/*         SG_LOG_WARNING => Ok(Self::Warning), */
-/*         SG_LOG_NOTICE => Ok(Self::Notice), */
-/*         SG_LOG_INFO => Ok(Self::Info), */
-/*         SG_LOG_DEBUG => Ok(Self::Debug), */
-/*         x => Err(SignalError::InvalidLogLevel(x)), */
-/*       } */
-/*     } */
+  pub enum LogLevel {
+    Error,
+    Warning,
+    Notice,
+    Info,
+    Debug,
+  }
 
-/*     pub fn into_log_code(self) -> LogCode { */
-/*       match self { */
-/*         Self::Error => SG_LOG_ERROR, */
-/*         Self::Warning => SG_LOG_WARNING, */
-/*         Self::Notice => SG_LOG_NOTICE, */
-/*         Self::Info => SG_LOG_INFO, */
-/*         Self::Debug => SG_LOG_DEBUG, */
-/*       } */
-/*     } */
-/*   } */
-/* } */
+  impl LogLevel {
+    pub fn from_log_code(value: LogCode) -> Result<Self, InternalError> {
+      match value {
+        SG_LOG_ERROR => Ok(Self::Error),
+        SG_LOG_WARNING => Ok(Self::Warning),
+        SG_LOG_NOTICE => Ok(Self::Notice),
+        SG_LOG_INFO => Ok(Self::Info),
+        SG_LOG_DEBUG => Ok(Self::Debug),
+        x => Err(InternalError::InvalidLogLevel(x)),
+      }
+    }
+
+    pub fn into_log_code(self) -> LogCode {
+      match self {
+        Self::Error => SG_LOG_ERROR,
+        Self::Warning => SG_LOG_WARNING,
+        Self::Notice => SG_LOG_NOTICE,
+        Self::Info => SG_LOG_INFO,
+        Self::Debug => SG_LOG_DEBUG,
+      }
+    }
+  }
+}
 
 pub mod providers {
   pub mod crypto_provider {
@@ -258,6 +266,7 @@ pub mod providers {
     }
   }
   pub mod locking_functions {}
+
   pub mod log_function {}
 }
 
