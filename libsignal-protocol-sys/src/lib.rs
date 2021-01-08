@@ -30,7 +30,7 @@
 mod native_bindings;
 use native_bindings::generated_bindings as gen;
 
-mod error {
+pub mod error {
   use super::gen::{
     SG_ERR_DUPLICATE_MESSAGE, SG_ERR_FP_IDENT_MISMATCH, SG_ERR_FP_VERSION_MISMATCH, SG_ERR_INVAL,
     SG_ERR_INVALID_KEY, SG_ERR_INVALID_KEY_ID, SG_ERR_INVALID_MAC, SG_ERR_INVALID_MESSAGE,
@@ -82,7 +82,7 @@ mod error {
     UnknownClientApplicationError(UnknownError<i32>),
   }
 
-  pub enum SignalNativeResult<T> {
+  pub(crate) enum SignalNativeResult<T> {
     Success(T),
     Failure(SignalError),
   }
@@ -194,48 +194,189 @@ mod log {
   }
 }
 
-mod global_context {
-  use lazy_static::lazy_static;
-
+mod handle {
   use parking_lot::Mutex;
 
-  use std::ffi::c_void;
-  use std::ptr::null_mut;
+  use std::ops::{Deref, DerefMut};
   use std::sync::Arc;
 
-  use super::gen::{signal_context, signal_context_create, signal_context_destroy};
-
-  use super::error::{SignalError, SignalNativeResult};
-
-  pub struct Context {
-    inner: Arc<Mutex<*mut *mut signal_context>>,
+  type Pointer<T> = *mut *mut T;
+  pub struct Handle<T> {
+    inner: Arc<Mutex<Pointer<T>>>,
   }
-  unsafe impl Send for Context {}
-  unsafe impl Sync for Context {}
+  unsafe impl<T> Send for Handle<T> {}
+  unsafe impl<T> Sync for Handle<T> {}
 
-  impl Context {
-    unsafe fn new() -> Result<Self, SignalError> {
-      let inner: *mut *mut signal_context = null_mut();
-      let user_data: *mut c_void = null_mut();
-      let result: Result<_, _> =
-        SignalNativeResult::call_method(inner, |inner| signal_context_create(inner, user_data))
-          .into();
-      Ok(Self {
-        inner: Arc::new(Mutex::new(result?)),
-      })
+  impl<T> Deref for Handle<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+      unsafe { &***self.inner.lock() }
     }
   }
 
+  impl<T> DerefMut for Handle<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+      unsafe { &mut ***self.inner.lock() }
+    }
+  }
+
+  impl<T> Handle<T> {
+    pub unsafe fn new(p: Pointer<T>) -> Self {
+      Self {
+        inner: Arc::new(Mutex::new(p)),
+      }
+    }
+
+    pub unsafe fn get_ptr(&self) -> *const T {
+      let inner: &T = &*self;
+      let inner_ptr: *const T = inner;
+      inner_ptr
+    }
+
+    pub unsafe fn get_mut_ptr(&mut self) -> *mut T {
+      let inner: &mut T = &mut *self;
+      let inner_ptr: *mut T = inner;
+      inner_ptr
+    }
+  }
+
+  pub trait Managed<T, I, E> {
+    unsafe fn create_raw(i: I) -> Result<*mut *mut T, E>;
+    unsafe fn destroy_raw(t: *mut T) -> Result<(), E>;
+
+    unsafe fn create_new_handle(i: I) -> Result<Handle<T>, E> {
+      let p = Self::create_raw(i)?;
+      Ok(Handle::new(p))
+    }
+  }
+
+  pub trait ViaHandle<T> {
+    fn from_handle(handle: Handle<T>) -> Self;
+    fn as_handle(&mut self) -> &mut Handle<T>;
+  }
+
+  pub unsafe trait Handled<T, I, E>: Managed<T, I, E> + ViaHandle<T> {
+    unsafe fn handled_instance(i: I) -> Result<Self, E>
+    where
+      Self: Sized,
+    {
+      Ok(Self::from_handle(Self::create_new_handle(i)?))
+    }
+
+    unsafe fn handled_drop(&mut self) -> Result<(), E>
+    where
+      Self: Sized,
+    {
+      Self::destroy_raw(self.as_handle().get_mut_ptr())
+    }
+  }
+}
+
+pub mod global_context {
+  use lazy_static::lazy_static;
+
+  use std::ffi::c_void;
+  use std::ptr::null_mut;
+
+  use super::error::{SignalError, SignalNativeResult};
+  use super::gen::{signal_context, signal_context_create, signal_context_destroy};
+  use super::handle::{Handle, Handled, Managed, ViaHandle};
+
+  pub(crate) struct Context {
+    handle: Handle<signal_context>,
+  }
+
+  impl Managed<signal_context, (), SignalError> for Context {
+    unsafe fn create_raw(_i: ()) -> Result<*mut *mut signal_context, SignalError> {
+      let inner: *mut *mut signal_context = null_mut();
+      let user_data: *mut c_void = null_mut();
+      let result: Result<*mut *mut signal_context, SignalError> =
+        SignalNativeResult::call_method(inner, |inner| signal_context_create(inner, user_data))
+          .into();
+      result
+    }
+
+    unsafe fn destroy_raw(t: *mut signal_context) -> Result<(), SignalError> {
+      Ok(signal_context_destroy(t))
+    }
+  }
+
+  impl ViaHandle<signal_context> for Context {
+    fn from_handle(handle: Handle<signal_context>) -> Self {
+      Self { handle }
+    }
+    fn as_handle(&mut self) -> &mut Handle<signal_context> {
+      &mut self.handle
+    }
+  }
+
+  unsafe impl Handled<signal_context, (), SignalError> for Context {}
+
   impl Drop for Context {
     fn drop(&mut self) {
-      let inner_ptr = self.inner.lock();
-      let ctx: *mut signal_context = unsafe { **inner_ptr };
-      unsafe { signal_context_destroy(ctx) };
+      unsafe {
+        self.handled_drop().expect("failed to drop Context");
+      };
     }
   }
 
   lazy_static! {
     static ref GLOBAL_CONTEXT: Context =
-      unsafe { Context::new().expect("creating global signal context failed!") };
+      unsafe { Context::handled_instance(()).expect("creating global signal Context failed!") };
+  }
+}
+
+pub mod data_store {
+  use std::ptr::null_mut;
+
+  use super::error::{SignalError, SignalNativeResult};
+  use super::gen::{
+    signal_protocol_store_context, signal_protocol_store_context_create,
+    signal_protocol_store_context_destroy,
+  };
+  use super::global_context::Context;
+  use super::handle::{Handle, Handled, Managed, ViaHandle};
+
+  pub struct DataStore {
+    handle: Handle<signal_protocol_store_context>,
+  }
+
+  impl Managed<signal_protocol_store_context, &mut Context, SignalError> for DataStore {
+    unsafe fn create_raw(
+      i: &mut Context,
+    ) -> Result<*mut *mut signal_protocol_store_context, SignalError> {
+      let inner: *mut *mut signal_protocol_store_context = null_mut();
+      let ctx = i.as_handle().get_mut_ptr();
+      let result: Result<*mut *mut signal_protocol_store_context, SignalError> =
+        SignalNativeResult::call_method(inner, |inner| {
+          signal_protocol_store_context_create(inner, ctx)
+        })
+        .into();
+      result
+    }
+
+    unsafe fn destroy_raw(t: *mut signal_protocol_store_context) -> Result<(), SignalError> {
+      Ok(signal_protocol_store_context_destroy(t))
+    }
+  }
+
+  impl ViaHandle<signal_protocol_store_context> for DataStore {
+    fn from_handle(handle: Handle<signal_protocol_store_context>) -> Self {
+      Self { handle }
+    }
+    fn as_handle(&mut self) -> &mut Handle<signal_protocol_store_context> {
+      &mut self.handle
+    }
+  }
+
+  unsafe impl Handled<signal_protocol_store_context, &mut Context, SignalError> for DataStore {}
+
+  impl Drop for DataStore {
+    fn drop(&mut self) {
+      unsafe {
+        self.handled_drop().expect("failed to drop DataStore");
+      };
+    }
   }
 }
