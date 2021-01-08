@@ -7,6 +7,6 @@ spack:
   specs:
   - libsignal-protocol-c
   - libgcrypt
-  - rust@1.48.0
+  - rust@master
   - rust-bindgen@0.56.0
   view: true

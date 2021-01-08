@@ -27,8 +27,6 @@
 // Arc<Mutex> can be more clear than needing to grok Orderings:
 #![allow(clippy::mutex_atomic)]
 
-use bindgen;
-
 fn main() {
   // Tell cargo to tell rustc to link against the spack-provided libraries.
   println!("cargo:rustc-link-lib=signal-protocol-c");

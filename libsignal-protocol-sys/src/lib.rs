@@ -1,7 +1,9 @@
 // Copyright 2021, Danny McClanahan
 // Licensed under the GNU GPL, Version 3.0 or any later version (see COPYING).
 
+#![feature(get_mut_unchecked)]
 #![deny(warnings)]
+
 // Enable all clippy lints except for many of the pedantic ones. It's a shame this needs to be copied and pasted across crates, but there doesn't appear to be a way to include inner attributes from a common source.
 #![deny(
   clippy::all,
@@ -28,131 +30,10 @@
 #![allow(clippy::mutex_atomic)]
 
 pub mod buffer;
+pub mod error;
 
 mod native_bindings;
 use native_bindings::generated_bindings as gen;
-
-pub mod error {
-  use super::gen::{
-    SG_ERR_DUPLICATE_MESSAGE, SG_ERR_FP_IDENT_MISMATCH, SG_ERR_FP_VERSION_MISMATCH, SG_ERR_INVAL,
-    SG_ERR_INVALID_KEY, SG_ERR_INVALID_KEY_ID, SG_ERR_INVALID_MAC, SG_ERR_INVALID_MESSAGE,
-    SG_ERR_INVALID_PROTO_BUF, SG_ERR_INVALID_VERSION, SG_ERR_LEGACY_MESSAGE, SG_ERR_MINIMUM,
-    SG_ERR_NOMEM, SG_ERR_NO_SESSION, SG_ERR_STALE_KEY_EXCHANGE, SG_ERR_UNKNOWN,
-    SG_ERR_UNTRUSTED_IDENTITY, SG_ERR_VRF_SIG_VERIF_FAILED, SG_SUCCESS,
-  };
-
-  use std::convert::Into;
-
-  #[derive(Debug)]
-  pub struct UnknownError<E> {
-    more_specific_value: Option<E>,
-  }
-
-  impl<E> UnknownError<E> {
-    pub fn generic() -> Self {
-      Self {
-        more_specific_value: None,
-      }
-    }
-
-    pub fn specific(value: E) -> Self {
-      Self {
-        more_specific_value: Some(value),
-      }
-    }
-  }
-
-  #[derive(Debug)]
-  pub enum SignalError {
-    NoMemory,
-    InvalidArgument,
-    UnknownSignalProtocolError(UnknownError<i32>),
-    DuplicateMessage,
-    InvalidKey,
-    InvalidKeyId,
-    InvalidMAC,
-    InvalidMessage,
-    InvalidVersion,
-    LegacyMessage,
-    NoSession,
-    StaleKeyExchange,
-    UntrustedIdentity,
-    VRFSignatureVerificationFailed,
-    InvalidProtobuf,
-    FPVersionMismatch,
-    FPIdentMismatch,
-    UnknownClientApplicationError(UnknownError<i32>),
-  }
-
-  pub(crate) enum SignalNativeResult<T> {
-    Success(T),
-    Failure(SignalError),
-  }
-
-  type ReturnCode = i32;
-  const SUCCESS: ReturnCode = SG_SUCCESS as ReturnCode;
-
-  impl<T> SignalNativeResult<T> {
-    pub fn success(arg: T) -> Self {
-      Self::Success(arg)
-    }
-
-    pub fn fail(error: SignalError) -> Self {
-      Self::Failure(error)
-    }
-
-    pub fn invalid_argument() -> Self {
-      Self::fail(SignalError::InvalidArgument)
-    }
-
-    pub fn from_rc(rc: ReturnCode, arg: T) -> Self {
-      match rc {
-        SUCCESS => Self::success(arg),
-        SG_ERR_NOMEM => Self::fail(SignalError::NoMemory),
-        SG_ERR_INVAL => Self::invalid_argument(),
-        SG_ERR_UNKNOWN => Self::fail(SignalError::UnknownSignalProtocolError(
-          UnknownError::generic(),
-        )),
-        SG_ERR_DUPLICATE_MESSAGE => Self::fail(SignalError::DuplicateMessage),
-        SG_ERR_INVALID_KEY => Self::fail(SignalError::InvalidKey),
-        SG_ERR_INVALID_KEY_ID => Self::fail(SignalError::InvalidKeyId),
-        SG_ERR_INVALID_MAC => Self::fail(SignalError::InvalidMAC),
-        SG_ERR_INVALID_MESSAGE => Self::fail(SignalError::InvalidMessage),
-        SG_ERR_INVALID_VERSION => Self::fail(SignalError::InvalidVersion),
-        SG_ERR_LEGACY_MESSAGE => Self::fail(SignalError::LegacyMessage),
-        SG_ERR_NO_SESSION => Self::fail(SignalError::NoSession),
-        SG_ERR_STALE_KEY_EXCHANGE => Self::fail(SignalError::StaleKeyExchange),
-        SG_ERR_UNTRUSTED_IDENTITY => Self::fail(SignalError::UntrustedIdentity),
-        SG_ERR_VRF_SIG_VERIF_FAILED => Self::fail(SignalError::VRFSignatureVerificationFailed),
-        SG_ERR_INVALID_PROTO_BUF => Self::fail(SignalError::InvalidProtobuf),
-        SG_ERR_FP_VERSION_MISMATCH => Self::fail(SignalError::FPVersionMismatch),
-        SG_ERR_FP_IDENT_MISMATCH => Self::fail(SignalError::FPIdentMismatch),
-        x if x >= SG_ERR_MINIMUM => Self::fail(SignalError::UnknownSignalProtocolError(
-          UnknownError::specific(x),
-        )),
-        x => Self::fail(SignalError::UnknownClientApplicationError(
-          UnknownError::specific(x),
-        )),
-      }
-    }
-  }
-
-  impl<T> Into<Result<T, SignalError>> for SignalNativeResult<T> {
-    fn into(self: Self) -> Result<T, SignalError> {
-      match self {
-        Self::Success(x) => Ok(x),
-        Self::Failure(e) => Err(e),
-      }
-    }
-  }
-
-  impl<T: Copy> SignalNativeResult<T> {
-    pub fn call_method<F: FnOnce(T) -> ReturnCode>(t: T, f: F) -> Self {
-      let rc = f(t);
-      Self::from_rc(rc, t)
-    }
-  }
-}
 
 /* mod log_level { */
 /*   use super::error::SignalError; */
@@ -285,6 +166,7 @@ mod global_context {
 
   use std::ffi::c_void;
   use std::ptr;
+  use std::sync::Arc;
 
   use super::error::{SignalError, SignalNativeResult};
   use super::gen::{signal_context, signal_context_create, signal_context_destroy};
@@ -296,7 +178,8 @@ mod global_context {
 
   impl Destroyed<signal_context, SignalError> for Context {
     unsafe fn destroy_raw(t: *mut signal_context) -> Result<(), SignalError> {
-      Ok(signal_context_destroy(t))
+      signal_context_destroy(t);
+      Ok(())
     }
   }
 
@@ -331,29 +214,40 @@ mod global_context {
   }
 
   lazy_static! {
-    pub(crate) static ref GLOBAL_CONTEXT: Context =
-      unsafe { Context::handled_instance(()).expect("creating global signal Context failed!") };
+    pub(crate) static ref GLOBAL_CONTEXT: Arc<Context> = unsafe {
+      Arc::new(Context::handled_instance(()).expect("creating global signal Context failed!"))
+    };
   }
 }
 
 pub mod data_store {
   use std::ptr;
+  use std::sync::Arc;
 
   use super::error::{SignalError, SignalNativeResult};
   use super::gen::{
     signal_protocol_store_context, signal_protocol_store_context_create,
     signal_protocol_store_context_destroy,
   };
-  use super::global_context::Context;
+  use super::global_context::{Context, GLOBAL_CONTEXT};
   use super::handle::{Destroyed, Handle, Handled, Managed, ViaHandle};
 
   pub struct DataStore {
     handle: Handle<signal_protocol_store_context>,
   }
 
+  impl DataStore {
+    pub fn new() -> Self {
+      let mut ctx = GLOBAL_CONTEXT.clone();
+      let context: &mut Context = unsafe { Arc::get_mut_unchecked(&mut ctx) };
+      unsafe { Self::handled_instance(context).expect("creating signal DataStore context failed!") }
+    }
+  }
+
   impl Destroyed<signal_protocol_store_context, SignalError> for DataStore {
     unsafe fn destroy_raw(t: *mut signal_protocol_store_context) -> Result<(), SignalError> {
-      Ok(signal_protocol_store_context_destroy(t))
+      signal_protocol_store_context_destroy(t);
+      Ok(())
     }
   }
 
