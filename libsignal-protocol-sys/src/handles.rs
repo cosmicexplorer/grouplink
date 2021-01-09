@@ -1,37 +1,52 @@
-mod handled {
+pub mod handled {
   use crate::handle::*;
 
-  pub trait Destroyed<T, E> {
-    unsafe fn destroy_raw(t: Pointer<T>) -> Result<(), E>;
+  use std::convert::{AsMut, AsRef};
+
+  pub trait GetAux<Aux> {
+    fn get_aux(&self) -> Aux;
   }
 
-  pub trait Managed<T, I, E>: Destroyed<T, E> {
-    unsafe fn create_raw(i: I) -> Result<Pointer<T>, E>;
+  pub trait Destroyed<StructType, Aux> {
+    unsafe fn destroy_raw(t: Pointer<StructType>, aux: Aux);
+  }
 
-    unsafe fn create_new_handle(i: I) -> Result<Handle<T>, E> {
-      let p = Self::create_raw(i)?;
-      Ok(Handle::new(p))
+  pub trait Managed<StructType, Aux, I, E> {
+    unsafe fn create_raw(i: I, aux: &Aux) -> Result<Pointer<StructType>, E>;
+
+    unsafe fn create_new_handle(i: I, aux: Aux) -> Result<(Handle<StructType>, Aux), E> {
+      let p = Self::create_raw(i, &aux)?;
+      Ok((Handle::new(p), aux))
     }
   }
 
-  pub trait ViaHandle<T> {
-    fn from_handle(handle: Handle<T>) -> Self;
-    fn as_handle(&mut self) -> &mut Handle<T>;
+  pub trait ViaHandle<StructType, Aux>:
+    AsRef<Handle<StructType>> + AsMut<Handle<StructType>>
+  {
+    fn from_handle(handle: Handle<StructType>, aux: Aux) -> Self;
   }
 
-  pub unsafe trait Handled<T, I, E>: Managed<T, I, E> + ViaHandle<T> {
-    unsafe fn handled_instance(i: I) -> Result<Self, E>
+  pub trait Handled<StructType, Aux, I, E>:
+    GetAux<Aux>
+    + Managed<StructType, Aux, I, E>
+    + Destroyed<StructType, Aux>
+    + ViaHandle<StructType, Aux>
+  {
+    fn handled_instance(i: I, aux: Aux) -> Result<Self, E>
     where
       Self: Sized,
     {
-      Ok(Self::from_handle(Self::create_new_handle(i)?))
+      let (p, s) = unsafe { Self::create_new_handle(i, aux)? };
+      Ok(Self::from_handle(p, s))
     }
 
-    unsafe fn handled_drop(&mut self) -> Result<(), E>
+    fn handled_drop(&mut self)
     where
       Self: Sized,
     {
-      Self::destroy_raw(self.as_handle().get_mut_ptr())
+      let aux = self.get_aux();
+      let handle: &mut Handle<StructType> = self.as_mut();
+      unsafe { Self::destroy_raw(handle.get_mut_ptr(), aux) };
     }
   }
 }
@@ -39,11 +54,12 @@ mod handled {
 mod global_context {
   use lazy_static::lazy_static;
 
+  use std::convert::{AsMut, AsRef};
   use std::ffi::c_void;
   use std::ptr;
   use std::sync::Arc;
 
-  use super::handled::{Destroyed, Handled, Managed, ViaHandle};
+  use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{signal_context, signal_context_create, signal_context_destroy};
   use crate::handle::Handle;
@@ -52,15 +68,18 @@ mod global_context {
     handle: Handle<signal_context>,
   }
 
-  impl Destroyed<signal_context, SignalError> for Context {
-    unsafe fn destroy_raw(t: *mut signal_context) -> Result<(), SignalError> {
+  impl GetAux<()> for Context {
+    fn get_aux(&self) {}
+  }
+
+  impl Destroyed<signal_context, ()> for Context {
+    unsafe fn destroy_raw(t: *mut signal_context, _aux: ()) {
       signal_context_destroy(t);
-      Ok(())
     }
   }
 
-  impl Managed<signal_context, (), SignalError> for Context {
-    unsafe fn create_raw(_i: ()) -> Result<*mut signal_context, SignalError> {
+  impl Managed<signal_context, (), (), SignalError> for Context {
+    unsafe fn create_raw(_i: (), _aux: &()) -> Result<*mut signal_context, SignalError> {
       let inner: *mut *mut signal_context = ptr::null_mut();
       let user_data: *mut c_void = ptr::null_mut();
       let result: Result<*mut *mut signal_context, SignalError> =
@@ -70,38 +89,43 @@ mod global_context {
     }
   }
 
-  impl ViaHandle<signal_context> for Context {
-    fn from_handle(handle: Handle<signal_context>) -> Self {
-      Self { handle }
+  impl AsRef<Handle<signal_context>> for Context {
+    fn as_ref(&self) -> &Handle<signal_context> {
+      &self.handle
     }
-    fn as_handle(&mut self) -> &mut Handle<signal_context> {
+  }
+  impl AsMut<Handle<signal_context>> for Context {
+    fn as_mut(&mut self) -> &mut Handle<signal_context> {
       &mut self.handle
     }
   }
+  impl ViaHandle<signal_context, ()> for Context {
+    fn from_handle(handle: Handle<signal_context>, _i: ()) -> Self {
+      Self { handle }
+    }
+  }
 
-  unsafe impl Handled<signal_context, (), SignalError> for Context {}
+  impl Handled<signal_context, (), (), SignalError> for Context {}
 
   impl Drop for Context {
     fn drop(&mut self) {
-      unsafe {
-        self.handled_drop().expect("failed to drop Context");
-      };
+      self.handled_drop();
     }
   }
 
   lazy_static! {
-    pub(crate) static ref GLOBAL_CONTEXT: Arc<Context> = unsafe {
-      Arc::new(Context::handled_instance(()).expect("creating global signal Context failed!"))
-    };
+    pub(crate) static ref GLOBAL_CONTEXT: Arc<Context> =
+      Arc::new(Context::handled_instance((), ()).expect("creating global signal Context failed!"));
   }
 }
 
 pub mod data_store {
+  use std::convert::{AsMut, AsRef};
   use std::ptr;
   use std::sync::Arc;
 
   use super::global_context::{Context, GLOBAL_CONTEXT};
-  use super::handled::{Destroyed, Handled, Managed, ViaHandle};
+  use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{
     signal_protocol_store_context, signal_protocol_store_context_create,
@@ -117,23 +141,27 @@ pub mod data_store {
     pub fn new() -> Self {
       let mut ctx = GLOBAL_CONTEXT.clone();
       let context: &mut Context = unsafe { Arc::get_mut_unchecked(&mut ctx) };
-      unsafe { Self::handled_instance(context).expect("creating signal DataStore context failed!") }
+      Self::handled_instance(context, ()).expect("creating signal DataStore context failed!")
     }
   }
 
-  impl Destroyed<signal_protocol_store_context, SignalError> for DataStore {
-    unsafe fn destroy_raw(t: *mut signal_protocol_store_context) -> Result<(), SignalError> {
+  impl GetAux<()> for DataStore {
+    fn get_aux(&self) {}
+  }
+
+  impl Destroyed<signal_protocol_store_context, ()> for DataStore {
+    unsafe fn destroy_raw(t: *mut signal_protocol_store_context, _aux: ()) {
       signal_protocol_store_context_destroy(t);
-      Ok(())
     }
   }
 
-  impl Managed<signal_protocol_store_context, &mut Context, SignalError> for DataStore {
+  impl Managed<signal_protocol_store_context, (), &mut Context, SignalError> for DataStore {
     unsafe fn create_raw(
       i: &mut Context,
+      _aux: &(),
     ) -> Result<*mut signal_protocol_store_context, SignalError> {
       let inner: *mut *mut signal_protocol_store_context = ptr::null_mut();
-      let ctx = i.as_handle().get_mut_ptr();
+      let ctx = i.as_mut().get_mut_ptr();
       let result: Result<*mut *mut signal_protocol_store_context, SignalError> =
         SignalNativeResult::call_method(inner, |inner| {
           signal_protocol_store_context_create(inner, ctx)
@@ -143,22 +171,27 @@ pub mod data_store {
     }
   }
 
-  impl ViaHandle<signal_protocol_store_context> for DataStore {
-    fn from_handle(handle: Handle<signal_protocol_store_context>) -> Self {
-      Self { handle }
+  impl AsRef<Handle<signal_protocol_store_context>> for DataStore {
+    fn as_ref(&self) -> &Handle<signal_protocol_store_context> {
+      &self.handle
     }
-    fn as_handle(&mut self) -> &mut Handle<signal_protocol_store_context> {
+  }
+  impl AsMut<Handle<signal_protocol_store_context>> for DataStore {
+    fn as_mut(&mut self) -> &mut Handle<signal_protocol_store_context> {
       &mut self.handle
     }
   }
+  impl ViaHandle<signal_protocol_store_context, ()> for DataStore {
+    fn from_handle(handle: Handle<signal_protocol_store_context>, _i: ()) -> Self {
+      Self { handle }
+    }
+  }
 
-  unsafe impl Handled<signal_protocol_store_context, &mut Context, SignalError> for DataStore {}
+  impl Handled<signal_protocol_store_context, (), &mut Context, SignalError> for DataStore {}
 
   impl Drop for DataStore {
     fn drop(&mut self) {
-      unsafe {
-        self.handled_drop().expect("failed to drop DataStore");
-      };
+      self.handled_drop();
     }
   }
 }

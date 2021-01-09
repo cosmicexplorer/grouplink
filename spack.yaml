@@ -10,3 +10,5 @@ spack:
   - rust@master
   - rust-bindgen@0.56.0
   view: true
+  config:
+    debug: true

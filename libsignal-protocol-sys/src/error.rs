@@ -10,7 +10,7 @@ use std::convert::From;
 
 #[derive(Debug)]
 pub struct UnknownError<E> {
-  more_specific_value: Option<E>,
+  pub more_specific_value: Option<E>,
 }
 
 impl<E> UnknownError<E> {
@@ -50,8 +50,65 @@ pub enum SignalError {
   ClientApplicationError(UnknownError<ReturnCode>),
 }
 
-type ReturnCode = i32;
-const SUCCESS: ReturnCode = SG_SUCCESS as ReturnCode;
+pub mod foundations {
+  pub type ReturnCode = i32;
+  pub const SUCCESS: ReturnCode = super::SG_SUCCESS as ReturnCode;
+  pub const MINIMUM: ReturnCode = super::SG_ERR_MINIMUM;
+
+  pub trait ErrorCodeable {
+    fn into_rc(self) -> ReturnCode;
+  }
+}
+pub use foundations::*;
+
+pub mod extensions {
+  use super::foundations::{ErrorCodeable, ReturnCode, SUCCESS};
+
+  pub trait ShiftedErrorCodeable {
+    fn shift(&self) -> ReturnCode;
+    fn into_relative_rc(self) -> ReturnCode;
+  }
+
+  impl<T> ErrorCodeable for T
+  where
+    T: ShiftedErrorCodeable,
+  {
+    fn into_rc(self) -> ReturnCode {
+      assert_eq!(SUCCESS, 0);
+      let basis = self.shift();
+      assert!(basis < SUCCESS);
+      let relative_rc = self.into_relative_rc();
+      assert!(relative_rc < SUCCESS);
+      assert!((-1 * relative_rc) < (-1 * basis));
+      basis + relative_rc
+    }
+  }
+}
+
+impl ErrorCodeable for SignalError {
+  fn into_rc(self) -> ReturnCode {
+    match self {
+      Self::NoMemory => SG_ERR_NOMEM,
+      Self::InvalidArgument => SG_ERR_INVAL,
+      Self::UnknownSignalProtocolError(err) => err.more_specific_value.unwrap_or(SG_ERR_UNKNOWN),
+      Self::DuplicateMessage => SG_ERR_DUPLICATE_MESSAGE,
+      Self::InvalidKey => SG_ERR_INVALID_KEY,
+      Self::InvalidKeyId => SG_ERR_INVALID_KEY_ID,
+      Self::InvalidMAC => SG_ERR_INVALID_MAC,
+      Self::InvalidMessage => SG_ERR_INVALID_MESSAGE,
+      Self::InvalidVersion => SG_ERR_INVALID_VERSION,
+      Self::LegacyMessage => SG_ERR_LEGACY_MESSAGE,
+      Self::NoSession => SG_ERR_NO_SESSION,
+      Self::StaleKeyExchange => SG_ERR_STALE_KEY_EXCHANGE,
+      Self::UntrustedIdentity => SG_ERR_UNTRUSTED_IDENTITY,
+      Self::VRFSignatureVerificationFailed => SG_ERR_VRF_SIG_VERIF_FAILED,
+      Self::InvalidProtobuf => SG_ERR_INVALID_PROTO_BUF,
+      Self::FPVersionMismatch => SG_ERR_FP_VERSION_MISMATCH,
+      Self::FPIdentMismatch => SG_ERR_FP_IDENT_MISMATCH,
+      Self::ClientApplicationError(err) => err.more_specific_value.unwrap_or(SG_ERR_MINIMUM - 1),
+    }
+  }
+}
 
 pub(crate) enum SignalNativeResult<T> {
   Success(T),

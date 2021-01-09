@@ -1,184 +1,251 @@
 mod protocol {
-  use std::convert::{AsMut, AsRef, From};
+  use crate::handles::handled::Handled;
 
-  pub struct BufferRequest {
+  use std::convert::{AsMut, AsRef, From};
+  use std::default::Default;
+  use std::sync::Arc;
+
+  #[derive(Default, Debug, Clone)]
+  pub struct BufferAllocate {
     pub size: usize,
+    pub sensitivity: Sensitivity,
   }
 
-  pub trait BufferRequestable<'a>: Clone + From<&'a [u8]> + From<BufferRequest> {}
+  #[derive(Debug, Clone)]
+  pub struct BufferSource {
+    pub data: Arc<Vec<u8>>,
+  }
+
+  impl BufferSource {
+    pub fn from_data<V: AsRef<[u8]>>(data: V) -> Self {
+      Self {
+        data: Arc::new(data.as_ref().to_vec()),
+      }
+    }
+    /* TODO: try to match raw pointer values to allocated Handle. Possibly also match raw
+     * pointers by a hash of their contents (see upc/). */
+    pub fn from_arc(other: Arc<Vec<u8>>) -> Self {
+      Self {
+        data: Arc::clone(&other),
+      }
+    }
+  }
+
+  impl AsRef<[u8]> for BufferSource {
+    fn as_ref(&self) -> &[u8] {
+      self.data.as_ref()
+    }
+  }
+
+  impl Default for BufferSource {
+    fn default() -> Self {
+      Self::from_data(&[])
+    }
+  }
+
+  #[derive(Default, Debug, Clone)]
+  pub struct BufferCopy {
+    pub source: BufferSource,
+    pub sensitivity: Sensitivity,
+  }
+
+  pub trait BufferAllocateable: Clone + From<BufferAllocate> + From<BufferCopy> + Default {}
 
   pub trait BufferReferrable: AsRef<[u8]> + AsMut<[u8]> {
     fn len(&self) -> usize;
   }
 
-  pub trait BufferOps<'a>: BufferRequestable<'a> + BufferReferrable {}
+  pub trait BufferOps: BufferAllocateable + BufferReferrable {}
+
+  #[derive(Clone, Debug, Copy)]
+  pub enum Sensitivity {
+    Sensitive,
+    Idk,
+  }
+
+  impl Default for Sensitivity {
+    fn default() -> Self {
+      /* FIXME: default to bzeroing buffers? */
+      Self::Sensitive
+    }
+  }
+
+  pub trait Sensitive {
+    fn as_sensitivity(&self) -> Sensitivity;
+  }
+
+  pub trait BufferWrapper<StructType, Aux, I, E>:
+    Handled<StructType, Aux, I, E> + BufferOps + Sensitive
+  {
+  }
 }
 
-mod signal_native {
+mod signal_native_impl {
   use std::convert::{AsMut, AsRef, From};
+  use std::default::Default;
   use std::slice;
 
   use super::protocol::*;
 
+  use crate::error::SignalError;
   use crate::gen::{
     signal_buffer, signal_buffer_alloc, signal_buffer_bzero_free, signal_buffer_const_data,
     signal_buffer_copy, signal_buffer_create, signal_buffer_data, signal_buffer_free,
     signal_buffer_len, size_t,
   };
-
-  use crate::error::SignalError;
   use crate::handle::Handle;
+  use crate::handles::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+
+  pub type Inner = signal_buffer;
 
   type SizeType = size_t;
 
-  pub trait BufferWrapper<Buf> {
-    unsafe fn from_ptr(buf: *mut Buf) -> Self;
-    fn receive_buffer(buf: *mut Buf) -> Result<*mut Buf, SignalError> {
-      if buf.is_null() {
-        Err(SignalError::NoMemory)
-      } else {
-        Ok(buf)
-      }
+  fn receive_buffer_mut(buf: *mut Inner) -> Result<*mut Inner, SignalError> {
+    if buf.is_null() {
+      Err(SignalError::NoMemory)
+    } else {
+      Ok(buf)
     }
-    fn inner_handle(&self) -> *const Buf;
-    fn inner_handle_mut(&mut self) -> *mut Buf;
-    fn buffer_free(&mut self);
-    fn buffer_bzero_free(&mut self);
+  }
+
+  unsafe fn from_other(buf: *const Inner) -> Result<*mut Inner, SignalError> {
+    receive_buffer_mut(signal_buffer_copy(buf))
+  }
+
+  unsafe fn from_bytes(data: &[u8]) -> Result<*mut Inner, SignalError> {
+    receive_buffer_mut(signal_buffer_create(data.as_ptr(), data.len() as SizeType))
   }
 
   pub struct Buffer {
-    handle: Handle<signal_buffer>,
+    handle: Handle<Inner>,
+    sensitivity: Sensitivity,
   }
 
-  impl BufferWrapper<signal_buffer> for Buffer {
-    unsafe fn from_ptr(buf: *mut signal_buffer) -> Self {
+  /* START: impl ViaHandle */
+  impl AsRef<Handle<Inner>> for Buffer {
+    fn as_ref(&self) -> &Handle<Inner> {
+      &self.handle
+    }
+  }
+  impl AsMut<Handle<Inner>> for Buffer {
+    fn as_mut(&mut self) -> &mut Handle<Inner> {
+      &mut self.handle
+    }
+  }
+  impl ViaHandle<Inner, Sensitivity> for Buffer {
+    fn from_handle(handle: Handle<Inner>, aux: Sensitivity) -> Self {
       Self {
-        handle: Handle::new(buf),
+        handle,
+        sensitivity: aux,
       }
     }
-    fn inner_handle(&self) -> *const signal_buffer {
-      unsafe { self.handle.get_ptr() }
+  }
+  /* END: impl ViaHandle */
+
+  /* START: impl BufferWrapper */
+  impl Sensitive for Buffer {
+    fn as_sensitivity(&self) -> Sensitivity {
+      self.sensitivity
     }
-    fn inner_handle_mut(&mut self) -> *mut signal_buffer {
-      unsafe { self.handle.get_mut_ptr() }
+  }
+  impl GetAux<Sensitivity> for Buffer {
+    fn get_aux(&self) -> Sensitivity {
+      self.as_sensitivity()
     }
-    fn buffer_free(&mut self) {
-      unsafe { signal_buffer_free(self.inner_handle_mut()) }
+  }
+  impl Destroyed<Inner, Sensitivity> for Buffer {
+    unsafe fn destroy_raw(t: *mut Inner, aux: Sensitivity) {
+      match aux {
+        Sensitivity::Sensitive => signal_buffer_bzero_free(t),
+        Sensitivity::Idk => signal_buffer_free(t),
+      }
     }
-    fn buffer_bzero_free(&mut self) {
-      unsafe { signal_buffer_bzero_free(self.inner_handle_mut()) }
+  }
+  impl Managed<Inner, Sensitivity, BufferSource, SignalError> for Buffer {
+    unsafe fn create_raw(i: BufferSource, _aux: &Sensitivity) -> Result<*mut Inner, SignalError> {
+      from_bytes(i.as_ref())
+    }
+  }
+  impl Handled<Inner, Sensitivity, BufferSource, SignalError> for Buffer {}
+  /* END: impl BufferWrapper */
+
+  impl Drop for Buffer {
+    fn drop(&mut self) {
+      self.handled_drop();
     }
   }
 
-  /* impl<'a> BufferRequestable<'a> */
+  /* START: impl BufferAllocateable */
   impl Clone for Buffer {
     fn clone(&self) -> Self {
-      let ptr = Self::receive_buffer(unsafe { signal_buffer_copy(self.inner_handle()) })
-        .expect("did not expect failure to clone signal buffer");
-      unsafe { Buffer::from_ptr(ptr) }
+      let ptr = unsafe {
+        from_other(self.handle.get_ptr()).expect("did not expect failure to clone signal buffer")
+      };
+      let handle = Handle::new(ptr);
+      Buffer::from_handle(handle, self.as_sensitivity())
     }
   }
-
-  impl<'a> From<&'a [u8]> for Buffer {
-    fn from(other: &'a [u8]) -> Self {
-      let ptr = Self::receive_buffer(unsafe {
-        signal_buffer_create(other.as_ptr(), other.len() as SizeType)
-      })
-      .expect("did not expect failure to create signal buffer from data");
-      unsafe { Buffer::from_ptr(ptr) }
+  impl From<BufferCopy> for Buffer {
+    fn from(other: BufferCopy) -> Self {
+      let BufferCopy {
+        source,
+        sensitivity,
+      } = other;
+      let ptr = unsafe {
+        from_bytes(source.as_ref())
+          .expect("did not expect failure to create signal buffer from data")
+      };
+      let handle = Handle::new(ptr);
+      Buffer::from_handle(handle, sensitivity)
     }
   }
-
-  impl From<BufferRequest> for Buffer {
-    fn from(other: BufferRequest) -> Self {
-      let ptr = Self::receive_buffer(unsafe { signal_buffer_alloc(other.size as SizeType) })
-        .expect("did not expect failure to allocate blank signal buffer");
-      unsafe { Buffer::from_ptr(ptr) }
+  impl From<BufferAllocate> for Buffer {
+    fn from(other: BufferAllocate) -> Self {
+      let BufferAllocate { size, sensitivity } = other;
+      let ptr = unsafe {
+        from_other(signal_buffer_alloc(size as SizeType))
+          .expect("did not expect failure to allocate blank signal buffer")
+      };
+      let handle = Handle::new(ptr);
+      Buffer::from_handle(handle, sensitivity)
     }
   }
+  impl Default for Buffer {
+    fn default() -> Self {
+      Self::from(BufferAllocate::default())
+    }
+  }
+  impl BufferAllocateable for Buffer {}
+  /* END: impl BufferAllocateable */
 
-  impl<'a> BufferRequestable<'a> for Buffer {}
-
-  /* impl BufferReferrable */
+  /* START: impl BufferReferrable */
   impl AsRef<[u8]> for Buffer {
     fn as_ref(&self) -> &[u8] {
-      let ptr: *const u8 = unsafe { signal_buffer_const_data(self.inner_handle()) };
+      let ptr: *const u8 = unsafe { signal_buffer_const_data(self.handle.get_ptr()) };
       let len = self.len();
       unsafe { slice::from_raw_parts(ptr, len) }
     }
   }
-
   impl AsMut<[u8]> for Buffer {
     fn as_mut(&mut self) -> &mut [u8] {
-      let ptr: *mut u8 = unsafe { signal_buffer_data(self.inner_handle_mut()) };
+      let ptr: *mut u8 = unsafe { signal_buffer_data(self.handle.get_mut_ptr()) };
       let len = self.len();
       unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
   }
-
   impl BufferReferrable for Buffer {
     fn len(&self) -> usize {
-      unsafe { signal_buffer_len(self.inner_handle()) as usize }
+      unsafe { signal_buffer_len(self.handle.get_ptr()) as usize }
     }
   }
+  /* END: impl BufferReferrable */
 
   /* TODO: rustc doesn't like it when the `X` in `for X` is itself a generic bound. */
-  impl<'a> BufferOps<'a> for Buffer {}
-}
+  impl BufferOps for Buffer {}
 
-mod sensitivity {
-  use std::convert::{AsMut, AsRef};
-  use std::marker::PhantomData;
-
-  use super::protocol::*;
-  use super::signal_native::BufferWrapper;
-
-  pub enum Buffer<'a, Inner, Buf: BufferWrapper<Inner> + BufferOps<'a>> {
-    Sensitive(Buf, PhantomData<&'a Buf>, PhantomData<Inner>),
-    Idk(Buf),
-  }
-
-  impl<'a, Inner, Buf: BufferWrapper<Inner> + BufferOps<'a>> Buffer<'a, Inner, Buf> {
-    pub fn sensitive(buf: Buf) -> Self {
-      Self::Sensitive(buf, PhantomData, PhantomData)
-    }
-    pub fn idk(buf: Buf) -> Self {
-      Self::Idk(buf)
-    }
-  }
-
-  /* TODO: make this "composition" boilerplate into a macro! */
-  impl<'a, Inner, Buf: BufferWrapper<Inner> + BufferOps<'a>> AsRef<Buf> for Buffer<'a, Inner, Buf> {
-    fn as_ref(&self) -> &Buf {
-      match self {
-        Self::Sensitive(ref x, _, _) => x,
-        Self::Idk(ref x) => x,
-      }
-    }
-  }
-
-  impl<'a, Inner, Buf: BufferWrapper<Inner> + BufferOps<'a>> AsMut<Buf> for Buffer<'a, Inner, Buf> {
-    fn as_mut(&mut self) -> &mut Buf {
-      match self {
-        Self::Sensitive(ref mut x, _, _) => x,
-        Self::Idk(ref mut x) => x,
-      }
-    }
-  }
-
-  impl<'a, Inner, Buf: BufferWrapper<Inner> + BufferOps<'a>> Drop for Buffer<'a, Inner, Buf> {
-    fn drop(&mut self) {
-      match self {
-        Self::Sensitive(ref mut x, _, _) => x.buffer_bzero_free(),
-        Self::Idk(ref mut x) => x.buffer_free(),
-      }
-    }
-  }
+  impl BufferWrapper<Inner, Sensitivity, BufferSource, SignalError> for Buffer {}
 }
 
 /* exposed interface */
-pub use protocol::BufferRequest;
-pub use signal_native::Buffer as InnerBuffer;
-
-pub type BufferFactory<'a> = sensitivity::Buffer<'a, super::gen::signal_buffer, InnerBuffer>;
-pub type Buffer = BufferFactory<'static>;
+pub use protocol::*;
+pub use signal_native_impl::{Buffer, Inner};
