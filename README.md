@@ -15,6 +15,10 @@ We finally reconstitute this cryptosystem into a messaging system:
 
 # Minimal
 
+- [x] **Confirmed** that the Signal Protocol itself has no dependency on a phone number, just the app.
+- [ ] **TODO: WE ARE HERE** Perform a minimal enc/dec test for a buffer.
+
+Then, see if the following still makes sense:
 - [ ] Add an "endpoint" to the Signal Protocol to create a new *group-fungible* identity, which doesn't do anything yet.
 - [ ] Add corresponding endpoints for:
     - [ ] Adding another such identity to the group.
@@ -29,6 +33,19 @@ Encrypted messages can be sent between group-fungible identities in a test case.
 - [ ] Modify the Signal Protocol library [^libsignal-protocol-c] to use *group-fungible* identities instead of *UserID*s.
 - [ ] Make it work in a CLI tool.
     - i.e. externalize the identities and message keys into concrete files.
+
+Then consider this discussion:
+- [ ] Consider the **configuration options** we want to present to the user:
+> @turingtarpit
+> "think about whether there’s any room for letting the user configure to have degraded service in some situations for increased privacy"
+> @ireneista
+> there's a trade-off in terms of actually implementing it
+> any time you add something the user can configure, if the setting they chose can be detected by an attacker, the attacker can use it to fingerprint them
+> so we'll want to provide a minimal number of settings so as not to leak too many bits
+>
+> yep! 33 bits of entropy identifies anyone (because log base 2 of 8 billion is 33); we can document how much each setting leaks
+> though in reality the bits leaked in theory are just an approximation, because users don't choose all possible values uniformly
+> but it's still good to document so we can ballpark things
 
 ## Completion Criteria
 A Rust CLI tool can create and send group-fungible messages with a modified version of the Signal Protocol library.
@@ -204,3 +221,7 @@ An arbitrary device can perform the operations of the grouplink protocol with GP
 [^giving-up-on-pgp]: https://blog.filippo.io/giving-up-on-long-term-pgp/
 
 [^zk-proof]: https://en.wikipedia.org/wiki/Zero-knowledge_proof
+
+<!-- Local Variables: -->
+<!-- markdown-list-indent-width: 4 -->
+<!-- End: -->
