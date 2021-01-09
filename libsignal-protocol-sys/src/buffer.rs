@@ -74,7 +74,7 @@ mod protocol {
     fn as_sensitivity(&self) -> Sensitivity;
   }
 
-  pub trait BufferWrapper<StructType, Aux, I, E>:
+  pub trait BufferWrapper<StructType, Aux: Clone, I, E>:
     Handled<StructType, Aux, I, E> + BufferOps + Sensitive
   {
   }
@@ -149,12 +149,12 @@ mod signal_native_impl {
     }
   }
   impl GetAux<Sensitivity> for Buffer {
-    fn get_aux(&self) -> Sensitivity {
-      self.as_sensitivity()
+    fn get_aux(&self) -> &Sensitivity {
+      &self.sensitivity
     }
   }
   impl Destroyed<Inner, Sensitivity> for Buffer {
-    unsafe fn destroy_raw(t: *mut Inner, aux: Sensitivity) {
+    unsafe fn destroy_raw(t: *mut Inner, aux: &Sensitivity) {
       match aux {
         Sensitivity::Sensitive => signal_buffer_bzero_free(t),
         Sensitivity::Idk => signal_buffer_free(t),
@@ -246,6 +246,195 @@ mod signal_native_impl {
   impl BufferWrapper<Inner, Sensitivity, BufferSource, SignalError> for Buffer {}
 }
 
-/* exposed interface */
+pub mod buffers {
+  use crate::buffer::{Buffer, BufferCopy, BufferOps, BufferSource, Sensitivity};
+
+  pub trait WrappedBufferable<Buf: BufferOps> {
+    fn wrapped_buffer(&mut self) -> Buf;
+  }
+  pub trait WrappedBufferBase<Buf: BufferOps>: WrappedBufferable<Buf> {
+    fn from_buf(buf: Buf) -> Self;
+  }
+  pub trait SensitiveWrappedBuffer: WrappedBufferBase<Buffer> {
+    fn from_bytes(data: &[u8]) -> Self
+    where
+      Self: Sized,
+    {
+      let wrapped_buffer: Buffer = BufferCopy {
+        source: BufferSource::from_data(&data),
+        sensitivity: Sensitivity::Sensitive,
+      }
+      .into();
+      Self::from_buf(wrapped_buffer)
+    }
+  }
+
+  pub mod keys {
+    use super::{SensitiveWrappedBuffer, WrappedBufferBase, WrappedBufferable};
+    use crate::buffer::Buffer;
+
+    pub trait Key: SensitiveWrappedBuffer {}
+
+    pub struct EncryptionKey {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for EncryptionKey {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl WrappedBufferBase<Buffer> for EncryptionKey {
+      fn from_buf(buf: Buffer) -> Self {
+        Self { buf }
+      }
+    }
+    impl SensitiveWrappedBuffer for EncryptionKey {}
+    impl Key for EncryptionKey {}
+
+    pub struct DecryptionKey {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for DecryptionKey {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl WrappedBufferBase<Buffer> for DecryptionKey {
+      fn from_buf(buf: Buffer) -> Self {
+        Self { buf }
+      }
+    }
+    impl SensitiveWrappedBuffer for DecryptionKey {}
+    impl Key for DecryptionKey {}
+  }
+
+  pub mod per_message {
+    use super::{SensitiveWrappedBuffer, WrappedBufferBase, WrappedBufferable};
+    use crate::buffer::Buffer;
+
+    pub trait PerMessage: SensitiveWrappedBuffer {}
+
+    pub struct InitializationVector {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for InitializationVector {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl WrappedBufferBase<Buffer> for InitializationVector {
+      fn from_buf(buf: Buffer) -> Self {
+        Self { buf }
+      }
+    }
+    impl SensitiveWrappedBuffer for InitializationVector {}
+    impl PerMessage for InitializationVector {}
+
+    pub struct Plaintext {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for Plaintext {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl WrappedBufferBase<Buffer> for Plaintext {
+      fn from_buf(buf: Buffer) -> Self {
+        Self { buf }
+      }
+    }
+    impl SensitiveWrappedBuffer for Plaintext {}
+    impl PerMessage for Plaintext {}
+
+    pub struct Ciphertext {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for Ciphertext {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl WrappedBufferBase<Buffer> for Ciphertext {
+      fn from_buf(buf: Buffer) -> Self {
+        Self { buf }
+      }
+    }
+    impl SensitiveWrappedBuffer for Ciphertext {}
+    impl PerMessage for Ciphertext {}
+  }
+
+  pub mod digest {
+    use super::WrappedBufferable;
+    use crate::buffer::*;
+
+    pub trait Digester<Buf: BufferOps>: WrappedBufferable<Buf> {
+      type Args;
+      fn initialize(args: Self::Args) -> Self;
+      fn update(&mut self, data: &[u8]);
+    }
+
+    pub trait HMACSHA256Digester: Digester<Buffer> {
+      type Args = BufferSource;
+    }
+
+    #[derive(Default)]
+    pub struct HMACSHA256 {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for HMACSHA256 {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl Digester<Buffer> for HMACSHA256 {
+      type Args = <Self as HMACSHA256Digester>::Args;
+      fn initialize(args: BufferSource) -> Self {
+        Self {
+          /* FIXME: IS THIS CORRECT????? */
+          buf: Buffer::from(BufferCopy {
+            source: args,
+            sensitivity: Sensitivity::Sensitive,
+          }),
+        }
+      }
+      fn update(&mut self, _data: &[u8]) {
+        unimplemented!("!!!!");
+      }
+    }
+    impl HMACSHA256Digester for HMACSHA256 {}
+
+    pub trait SHA512Digester: Digester<Buffer> {
+      type Args = ();
+    }
+
+    #[derive(Default)]
+    pub struct SHA512 {
+      buf: Buffer,
+    }
+    impl WrappedBufferable<Buffer> for SHA512 {
+      fn wrapped_buffer(&mut self) -> Buffer {
+        self.buf.clone()
+      }
+    }
+    impl Digester<Buffer> for SHA512 {
+      type Args = <Self as SHA512Digester>::Args;
+      fn initialize(_args: ()) -> Self {
+        Self {
+          buf: Buffer::from(BufferAllocate {
+            /* FIXME: we know what the size of the written data is going to be here, right? */
+            size: 0,
+            sensitivity: Sensitivity::Sensitive,
+          }),
+        }
+      }
+      fn update(&mut self, _data: &[u8]) {
+        unimplemented!("xxxxxx");
+      }
+    }
+    impl SHA512Digester for SHA512 {}
+  }
+}
+
+/* exposed interface (also with `pub mod`s) */
 pub use protocol::*;
 pub use signal_native_impl::{Buffer, Inner};

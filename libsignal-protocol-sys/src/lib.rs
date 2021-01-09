@@ -2,7 +2,6 @@
 // Licensed under the GNU GPL, Version 3.0 or any later version (see COPYING).
 
 // Nightly features.
-#![feature(get_mut_unchecked)]
 #![feature(associated_type_defaults)]
 // Fail on warnings.
 #![deny(warnings)]
@@ -34,6 +33,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 pub mod buffer;
+pub mod global_context_manipulation;
 
 // We *only* use unsafe pointer dereferences when we implement the libsignal callbacks, so it is
 // nicer to list internal minor calls as unsafe, than to mark the whole function as unsafe which may
@@ -47,10 +47,42 @@ pub mod handles;
 mod native_bindings;
 use native_bindings::generated_bindings as gen;
 
+pub mod cell {
+  use std::cell::UnsafeCell;
+
+  pub unsafe trait UnsafeAPI<T> {
+    unsafe fn get_ptr(&self) -> *mut T;
+    unsafe fn get(&self) -> &mut T {
+      &mut *self.get_ptr()
+    }
+  }
+
+  pub struct EvenMoreUnsafeCell<T> {
+    inner: UnsafeCell<T>,
+  }
+
+  unsafe impl<T> UnsafeAPI<T> for EvenMoreUnsafeCell<T> {
+    unsafe fn get_ptr(&self) -> *mut T {
+      self.inner.get()
+    }
+  }
+
+  impl<T> From<T> for EvenMoreUnsafeCell<T> {
+    fn from(val: T) -> Self {
+      Self { inner: val.into() }
+    }
+  }
+
+  unsafe impl<T> Send for EvenMoreUnsafeCell<T> {}
+  unsafe impl<T> Sync for EvenMoreUnsafeCell<T> {}
+}
+
 pub mod handle {
   use parking_lot::RwLock;
 
+  use std::mem;
   use std::ops::{Deref, DerefMut};
+  use std::os::raw::c_void;
   use std::sync::Arc;
 
   pub type ConstPointer<T> = *const T;
@@ -94,19 +126,40 @@ pub mod handle {
       inner_ptr
     }
   }
+
+  ///
+  /// This method is intended for implementors of #[no_mangle] extern "C" fn APIs which are made to
+  /// store `user_data` information in a buffer provided again to other callback methods.
+  pub unsafe fn get_mut_ctx<'a, T>(user_data: *mut c_void) -> &'a mut T {
+    let user_data: *mut T = mem::transmute::<*mut c_void, *mut T>(user_data);
+    assert!(!user_data.is_null());
+    &mut *user_data
+  }
 }
 
 mod internal_error {
+  use crate::cipher::CipherCode;
   use crate::error::{
     extensions::ShiftedErrorCodeable,
     foundations::{ReturnCode, MINIMUM},
   };
+  use crate::log_level::LogCode;
+
+  use std::convert::From;
+  use std::str;
 
   #[derive(Debug)]
   pub enum InternalError {
-    InvalidLogLevel(crate::log_level::LogCode),
-    InvalidCipherType(crate::cipher::CipherCode),
+    InvalidLogLevel(LogCode),
+    InvalidCipherType(CipherCode),
+    InvalidUtf8(str::Utf8Error),
     Unknown,
+  }
+
+  impl From<str::Utf8Error> for InternalError {
+    fn from(err: str::Utf8Error) -> Self {
+      Self::InvalidUtf8(err)
+    }
   }
 
   impl ShiftedErrorCodeable for InternalError {
@@ -117,45 +170,8 @@ mod internal_error {
       match self {
         Self::InvalidLogLevel(_) => -1,
         Self::InvalidCipherType(_) => -2,
-        Self::Unknown => -3,
-      }
-    }
-  }
-}
-
-pub mod log_level {
-  use super::gen::{SG_LOG_DEBUG, SG_LOG_ERROR, SG_LOG_INFO, SG_LOG_NOTICE, SG_LOG_WARNING};
-  use super::internal_error::InternalError;
-
-  pub type LogCode = u32;
-
-  pub enum LogLevel {
-    Error,
-    Warning,
-    Notice,
-    Info,
-    Debug,
-  }
-
-  impl LogLevel {
-    pub fn from_log_code(value: LogCode) -> Result<Self, InternalError> {
-      match value {
-        SG_LOG_ERROR => Ok(Self::Error),
-        SG_LOG_WARNING => Ok(Self::Warning),
-        SG_LOG_NOTICE => Ok(Self::Notice),
-        SG_LOG_INFO => Ok(Self::Info),
-        SG_LOG_DEBUG => Ok(Self::Debug),
-        x => Err(InternalError::InvalidLogLevel(x)),
-      }
-    }
-
-    pub fn into_log_code(self) -> LogCode {
-      match self {
-        Self::Error => SG_LOG_ERROR,
-        Self::Warning => SG_LOG_WARNING,
-        Self::Notice => SG_LOG_NOTICE,
-        Self::Info => SG_LOG_INFO,
-        Self::Debug => SG_LOG_DEBUG,
+        Self::InvalidUtf8(_) => -3,
+        Self::Unknown => -4,
       }
     }
   }
@@ -190,203 +206,43 @@ pub mod cipher {
   }
 }
 
-///
-/// FIXME: ???
-pub mod buffers {
-  use crate::buffer::{Buffer, BufferCopy, BufferOps, BufferSource, Sensitivity};
+pub mod log_level {
+  use crate::gen::{SG_LOG_DEBUG, SG_LOG_ERROR, SG_LOG_INFO, SG_LOG_NOTICE, SG_LOG_WARNING};
+  use crate::internal_error::InternalError;
 
-  pub trait WrappedBufferable<Buf: BufferOps> {
-    fn wrapped_buffer(&mut self) -> Buf;
-  }
-  pub trait WrappedBufferBase<Buf: BufferOps>: WrappedBufferable<Buf> {
-    fn from_buf(buf: Buf) -> Self;
-  }
-  pub trait SensitiveWrappedBuffer: WrappedBufferBase<Buffer> {
-    fn from_bytes(data: &[u8]) -> Self
-    where
-      Self: Sized,
-    {
-      let wrapped_buffer: Buffer = BufferCopy {
-        source: BufferSource::from_data(&data),
-        sensitivity: Sensitivity::Sensitive,
-      }
-      .into();
-      Self::from_buf(wrapped_buffer)
-    }
+  pub type LogCode = u32;
+
+  #[derive(Debug)]
+  pub enum LogLevel {
+    Error,
+    Warning,
+    Notice,
+    Info,
+    Debug,
   }
 
-  pub mod keys {
-    use super::{SensitiveWrappedBuffer, WrappedBufferBase, WrappedBufferable};
-    use crate::buffer::Buffer;
+  impl LogLevel {
+    pub fn from_log_code(value: LogCode) -> Result<Self, InternalError> {
+      match value {
+        SG_LOG_ERROR => Ok(Self::Error),
+        SG_LOG_WARNING => Ok(Self::Warning),
+        SG_LOG_NOTICE => Ok(Self::Notice),
+        SG_LOG_INFO => Ok(Self::Info),
+        SG_LOG_DEBUG => Ok(Self::Debug),
+        x => Err(InternalError::InvalidLogLevel(x)),
+      }
+    }
 
-    pub trait Key: SensitiveWrappedBuffer {}
-
-    pub struct EncryptionKey {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for EncryptionKey {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
+    pub fn into_log_code(self) -> LogCode {
+      match self {
+        Self::Error => SG_LOG_ERROR,
+        Self::Warning => SG_LOG_WARNING,
+        Self::Notice => SG_LOG_NOTICE,
+        Self::Info => SG_LOG_INFO,
+        Self::Debug => SG_LOG_DEBUG,
       }
     }
-    impl WrappedBufferBase<Buffer> for EncryptionKey {
-      fn from_buf(buf: Buffer) -> Self {
-        Self { buf }
-      }
-    }
-    impl SensitiveWrappedBuffer for EncryptionKey {}
-    impl Key for EncryptionKey {}
-
-    pub struct DecryptionKey {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for DecryptionKey {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
-      }
-    }
-    impl WrappedBufferBase<Buffer> for DecryptionKey {
-      fn from_buf(buf: Buffer) -> Self {
-        Self { buf }
-      }
-    }
-    impl SensitiveWrappedBuffer for DecryptionKey {}
-    impl Key for DecryptionKey {}
   }
-
-  pub mod per_message {
-    use super::{SensitiveWrappedBuffer, WrappedBufferBase, WrappedBufferable};
-    use crate::buffer::Buffer;
-
-    pub trait PerMessage: SensitiveWrappedBuffer {}
-
-    pub struct InitializationVector {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for InitializationVector {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
-      }
-    }
-    impl WrappedBufferBase<Buffer> for InitializationVector {
-      fn from_buf(buf: Buffer) -> Self {
-        Self { buf }
-      }
-    }
-    impl SensitiveWrappedBuffer for InitializationVector {}
-    impl PerMessage for InitializationVector {}
-
-    pub struct Plaintext {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for Plaintext {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
-      }
-    }
-    impl WrappedBufferBase<Buffer> for Plaintext {
-      fn from_buf(buf: Buffer) -> Self {
-        Self { buf }
-      }
-    }
-    impl SensitiveWrappedBuffer for Plaintext {}
-    impl PerMessage for Plaintext {}
-
-    pub struct Ciphertext {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for Ciphertext {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
-      }
-    }
-    impl WrappedBufferBase<Buffer> for Ciphertext {
-      fn from_buf(buf: Buffer) -> Self {
-        Self { buf }
-      }
-    }
-    impl SensitiveWrappedBuffer for Ciphertext {}
-    impl PerMessage for Ciphertext {}
-  }
-
-  pub mod digest {
-    use super::WrappedBufferable;
-    use crate::buffer::*;
-
-    pub trait Digester<Buf: BufferOps>: WrappedBufferable<Buf> {
-      type Args;
-      fn initialize(args: Self::Args) -> Self;
-      fn update(&mut self, data: &[u8]);
-    }
-
-    pub trait HMACSHA256Digester: Digester<Buffer> {
-      type Args = BufferSource;
-    }
-
-    #[derive(Default)]
-    pub struct HMACSHA256 {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for HMACSHA256 {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
-      }
-    }
-    impl Digester<Buffer> for HMACSHA256 {
-      type Args = <Self as HMACSHA256Digester>::Args;
-      fn initialize(args: BufferSource) -> Self {
-        Self {
-          /* FIXME: IS THIS CORRECT????? */
-          buf: Buffer::from(BufferCopy {
-            source: args,
-            sensitivity: Sensitivity::Sensitive,
-          }),
-        }
-      }
-      fn update(&mut self, _data: &[u8]) {
-        unimplemented!("!!!!");
-      }
-    }
-    impl HMACSHA256Digester for HMACSHA256 {}
-
-    pub trait SHA512Digester: Digester<Buffer> {
-      type Args = ();
-    }
-
-    #[derive(Default)]
-    pub struct SHA512 {
-      buf: Buffer,
-    }
-    impl WrappedBufferable<Buffer> for SHA512 {
-      fn wrapped_buffer(&mut self) -> Buffer {
-        self.buf.clone()
-      }
-    }
-    impl Digester<Buffer> for SHA512 {
-      type Args = <Self as SHA512Digester>::Args;
-      fn initialize(_args: ()) -> Self {
-        Self {
-          buf: Buffer::from(BufferAllocate {
-            /* FIXME: we know what the size of the written data is going to be here, right? */
-            size: 0,
-            sensitivity: Sensitivity::Sensitive,
-          }),
-        }
-      }
-      fn update(&mut self, _data: &[u8]) {
-        unimplemented!("xxxxxx");
-      }
-    }
-    impl SHA512Digester for SHA512 {}
-  }
-}
-
-pub mod providers {
-  pub use crate::crypto_provider as crypto;
-
-  pub mod locking_functions {}
-
-  pub mod log_function {}
 }
 
 pub mod stores {
@@ -408,5 +264,15 @@ pub mod stores {
 
   pub mod sender_key_store {
     pub trait SenderKeyStore {}
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::io;
+
+  #[test]
+  fn test_something() -> io::Result<()> {
+    Ok(())
   }
 }

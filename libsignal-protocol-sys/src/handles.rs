@@ -4,11 +4,11 @@ pub mod handled {
   use std::convert::{AsMut, AsRef};
 
   pub trait GetAux<Aux> {
-    fn get_aux(&self) -> Aux;
+    fn get_aux(&self) -> &Aux;
   }
 
   pub trait Destroyed<StructType, Aux> {
-    unsafe fn destroy_raw(t: Pointer<StructType>, aux: Aux);
+    unsafe fn destroy_raw(t: Pointer<StructType>, aux: &Aux);
   }
 
   pub trait Managed<StructType, Aux, I, E> {
@@ -26,7 +26,7 @@ pub mod handled {
     fn from_handle(handle: Handle<StructType>, aux: Aux) -> Self;
   }
 
-  pub trait Handled<StructType, Aux, I, E>:
+  pub trait Handled<StructType, Aux: Clone, I, E>:
     GetAux<Aux>
     + Managed<StructType, Aux, I, E>
     + Destroyed<StructType, Aux>
@@ -44,9 +44,9 @@ pub mod handled {
     where
       Self: Sized,
     {
-      let aux = self.get_aux();
+      let aux = self.get_aux().clone();
       let handle: &mut Handle<StructType> = self.as_mut();
-      unsafe { Self::destroy_raw(handle.get_mut_ptr(), aux) };
+      unsafe { Self::destroy_raw(handle.get_mut_ptr(), &aux) };
     }
   }
 }
@@ -60,26 +60,46 @@ mod global_context {
   use std::sync::Arc;
 
   use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+
+  use crate::cell::{EvenMoreUnsafeCell, UnsafeAPI};
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{signal_context, signal_context_create, signal_context_destroy};
+  use crate::global_context_manipulation::{
+    log_function::{generic::Logger, log_impl::DefaultLogger},
+    recursive_locking_functions::{generic::Locker, mutex_impl::DefaultLocker},
+  };
   use crate::handle::Handle;
+
+  /* NB: We would like to be able to rely on a separate pointer carrying this information as in
+   * crypto_provider.rs, but since we can't (TODO: is this intentional???), we have to rely on
+   * deeply interworked imports. */
+  #[derive(Clone)]
+  pub(crate) struct ContextAux {
+    pub locker: Arc<dyn Locker>,
+    pub logger: Arc<dyn Logger>,
+  }
+  unsafe impl Send for ContextAux {}
+  unsafe impl Sync for ContextAux {}
 
   pub(crate) struct Context {
     handle: Handle<signal_context>,
+    aux: ContextAux,
   }
 
-  impl GetAux<()> for Context {
-    fn get_aux(&self) {}
+  impl GetAux<ContextAux> for Context {
+    fn get_aux(&self) -> &ContextAux {
+      &self.aux
+    }
   }
 
-  impl Destroyed<signal_context, ()> for Context {
-    unsafe fn destroy_raw(t: *mut signal_context, _aux: ()) {
+  impl Destroyed<signal_context, ContextAux> for Context {
+    unsafe fn destroy_raw(t: *mut signal_context, _aux: &ContextAux) {
       signal_context_destroy(t);
     }
   }
 
-  impl Managed<signal_context, (), (), SignalError> for Context {
-    unsafe fn create_raw(_i: (), _aux: &()) -> Result<*mut signal_context, SignalError> {
+  impl Managed<signal_context, ContextAux, (), SignalError> for Context {
+    unsafe fn create_raw(_i: (), _aux: &ContextAux) -> Result<*mut signal_context, SignalError> {
       let inner: *mut *mut signal_context = ptr::null_mut();
       let user_data: *mut c_void = ptr::null_mut();
       let result: Result<*mut *mut signal_context, SignalError> =
@@ -99,13 +119,48 @@ mod global_context {
       &mut self.handle
     }
   }
-  impl ViaHandle<signal_context, ()> for Context {
-    fn from_handle(handle: Handle<signal_context>, _i: ()) -> Self {
-      Self { handle }
+  impl ViaHandle<signal_context, ContextAux> for Context {
+    fn from_handle(handle: Handle<signal_context>, aux: ContextAux) -> Self {
+      Self { handle, aux }
     }
   }
 
-  impl Handled<signal_context, (), (), SignalError> for Context {}
+  fn register_bundled_config(ctx: &mut Context) -> Result<(), SignalError> {
+    let ctx = ctx.as_mut().get_mut_ptr();
+
+    /* Locker */
+    use crate::gen::signal_context_set_locking_functions;
+    use crate::global_context_manipulation::recursive_locking_functions::c_abi_impl::{
+      lock_func, unlock_func,
+    };
+    let result: Result<(), SignalError> = SignalNativeResult::call_method((), |()| unsafe {
+      signal_context_set_locking_functions(ctx, Some(lock_func), Some(unlock_func))
+    })
+    .into();
+    result?;
+
+    /* Logger */
+    use crate::gen::signal_context_set_log_function;
+    use crate::global_context_manipulation::log_function::c_abi_impl::log_func;
+    let result: Result<(), SignalError> = SignalNativeResult::call_method((), |()| unsafe {
+      signal_context_set_log_function(ctx, Some(log_func))
+    })
+    .into();
+    result?;
+
+    Ok(())
+  }
+
+  impl Handled<signal_context, ContextAux, (), SignalError> for Context {}
+
+  impl Context {
+    pub fn handled_instance(aux: ContextAux) -> Result<Self, SignalError> {
+      let mut ret: Context =
+        Handled::<signal_context, ContextAux, (), SignalError>::handled_instance((), aux)?;
+      register_bundled_config(&mut ret)?;
+      Ok(ret)
+    }
+  }
 
   impl Drop for Context {
     fn drop(&mut self) {
@@ -114,17 +169,47 @@ mod global_context {
   }
 
   lazy_static! {
-    pub(crate) static ref GLOBAL_CONTEXT: Arc<Context> =
-      Arc::new(Context::handled_instance((), ()).expect("creating global signal Context failed!"));
+    pub(crate) static ref GLOBAL_CONTEXT: EvenMoreUnsafeCell<Context> = {
+      let locker: Arc<dyn Locker> = Arc::new(DefaultLocker::new());
+      let logger: Arc<dyn Logger> = Arc::new(DefaultLogger());
+      let aux = ContextAux { locker, logger };
+      let ctx = Context::handled_instance(aux).expect("creating global signal Context failed!");
+      ctx.into()
+    };
+  }
+
+  pub(crate) trait HasWriteableContext<'a> {
+    fn writeable_context(self) -> &'a mut Context;
+  }
+
+  impl<'a> HasWriteableContext<'a> for Context {
+    fn writeable_context(self) -> &'a mut Context {
+      unimplemented!("idk!!!")
+    }
+  }
+
+  pub(crate) trait GlobalContext {
+    fn get_global_writeable_context() -> &'static mut Context {
+      let ctx: &mut Context = unsafe { (*GLOBAL_CONTEXT).get() };
+      ctx
+    }
+  }
+
+  impl<'a, T> HasWriteableContext<'a> for T
+  where
+    T: GlobalContext,
+  {
+    fn writeable_context(self) -> &'a mut Context {
+      Self::get_global_writeable_context()
+    }
   }
 }
 
 pub mod data_store {
   use std::convert::{AsMut, AsRef};
   use std::ptr;
-  use std::sync::Arc;
 
-  use super::global_context::{Context, GLOBAL_CONTEXT};
+  use super::global_context::{Context, GlobalContext};
   use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{
@@ -137,20 +222,23 @@ pub mod data_store {
     handle: Handle<signal_protocol_store_context>,
   }
 
+  impl GlobalContext for DataStore {}
+
   impl DataStore {
     pub fn new() -> Self {
-      let mut ctx = GLOBAL_CONTEXT.clone();
-      let context: &mut Context = unsafe { Arc::get_mut_unchecked(&mut ctx) };
-      Self::handled_instance(context, ()).expect("creating signal DataStore context failed!")
+      let ctx: &mut Context = Self::get_global_writeable_context();
+      Self::handled_instance(ctx, ()).expect("creating signal DataStore context failed!")
     }
   }
 
   impl GetAux<()> for DataStore {
-    fn get_aux(&self) {}
+    fn get_aux(&self) -> &() {
+      &()
+    }
   }
 
   impl Destroyed<signal_protocol_store_context, ()> for DataStore {
-    unsafe fn destroy_raw(t: *mut signal_protocol_store_context, _aux: ()) {
+    unsafe fn destroy_raw(t: *mut signal_protocol_store_context, _aux: &()) {
       signal_protocol_store_context_destroy(t);
     }
   }
@@ -195,3 +283,7 @@ pub mod data_store {
     }
   }
 }
+
+pub use handled::*;
+
+pub(crate) use global_context::{Context, GlobalContext};
