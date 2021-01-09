@@ -34,6 +34,7 @@ Encrypted messages can be sent between group-fungible identities in a test case.
 - [ ] Make it work in a CLI tool.
     - i.e. externalize the identities and message keys into concrete files.
 
+## Config Options
 Then consider this discussion:
 - [ ] Consider the **configuration options** we want to present to the user:
 > @turingtarpit
@@ -46,6 +47,15 @@ Then consider this discussion:
 > yep! 33 bits of entropy identifies anyone (because log base 2 of 8 billion is 33); we can document how much each setting leaks
 > though in reality the bits leaked in theory are just an approximation, because users don't choose all possible values uniformly
 > but it's still good to document so we can ballpark things
+
+Then consider (more) our approach to elliptic curve encryption:
+### Elliptic Curves
+- [ ] Consider introducing elliptic curve encryption methods via libgcrypt:
+> @vintroxx:
+> main benefit of ECC is smaller key lengths but a lot of the curves aren't necessarily trustworthy.
+> would recommend curve25519 though
+>
+> good resource: [^safe-curves]
 
 ## Completion Criteria
 A Rust CLI tool can create and send group-fungible messages with a modified version of the Signal Protocol library.
@@ -70,6 +80,10 @@ Ephemeral GPG identities can be created and used for:
 - [ ] Create a server implementing the above "grouplink" protocol with GPG support, either by:
     - modifying the Signal Server [^todo-signal-server-security-guarantees] to invoke the rust CLI tool.
     - *(preferred)* creating a rust server which extends the code from the CLI tool.
+
+## Validation/Verification
+- [ ] Consider whether the *Cryptol* [^cryptol] tool can validate any properties we want to validate.
+- [ ] See whether eBPF could do anything like this as well.
 
 ## Completion Criteria
 An arbitrary device can perform the operations of the grouplink protocol with GPG support by sending encrypted requests to an external server process.
@@ -221,6 +235,10 @@ An arbitrary device can perform the operations of the grouplink protocol with GP
 [^giving-up-on-pgp]: https://blog.filippo.io/giving-up-on-long-term-pgp/
 
 [^zk-proof]: https://en.wikipedia.org/wiki/Zero-knowledge_proof
+
+[^safe-curves]: https://safecurves.cr.yp.to/
+
+[^cryptol]: https://cryptol.net/
 
 <!-- Local Variables: -->
 <!-- markdown-list-indent-width: 4 -->
