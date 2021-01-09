@@ -243,8 +243,18 @@ pub mod c_abi_impl {
   use std::os::raw::{c_int, c_void};
   use std::slice;
 
+  ///
+  /// Implement the Signal API callbacks.
+  ///
+  /// NB: We manually prepend a common prefix to each method (here, `CRYPTO_`) in order to avoid any
+  /// symbol overlaps in the binary executable with all of them together!
+  /// TODO: rustc may already do this check though?
   #[no_mangle]
-  pub extern "C" fn random_func(data: *mut u8, len: size_t, user_data: *mut c_void) -> c_int {
+  pub extern "C" fn CRYPTO_random_func(
+    data: *mut u8,
+    len: size_t,
+    user_data: *mut c_void,
+  ) -> c_int {
     let crypto: &mut DefaultCrypto = unsafe { get_mut_ctx(user_data) };
     let data = unsafe { slice::from_raw_parts_mut(data, len as usize) };
     match crypto.random(data) {
@@ -254,7 +264,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn hmac_sha256_init_func(
+  pub extern "C" fn CRYPTO_hmac_sha256_init_func(
     hmac_context: *mut *mut c_void,
     key: *const u8,
     key_len: size_t,
@@ -272,7 +282,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn hmac_sha256_update_func(
+  pub extern "C" fn CRYPTO_hmac_sha256_update_func(
     hmac_context: *mut c_void,
     data: *const u8,
     data_len: size_t,
@@ -294,7 +304,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn hmac_sha256_final_func(
+  pub extern "C" fn CRYPTO_hmac_sha256_final_func(
     hmac_context: *mut c_void,
     output: *mut *mut signal_buffer,
     user_data: *mut c_void,
@@ -311,14 +321,17 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn hmac_sha256_cleanup_func(hmac_context: *mut c_void, user_data: *mut c_void) {
+  pub extern "C" fn CRYPTO_hmac_sha256_cleanup_func(
+    hmac_context: *mut c_void,
+    user_data: *mut c_void,
+  ) {
     let crypto: &mut DefaultCrypto = unsafe { get_mut_ctx(user_data) };
     let hmac: &mut HMACSHA256 = unsafe { get_mut_ctx(hmac_context) };
     crypto.hmac_sha256_cleanup(hmac);
   }
 
   #[no_mangle]
-  pub extern "C" fn sha512_digest_init_func(
+  pub extern "C" fn CRYPTO_sha512_digest_init_func(
     digest_context: *mut *mut c_void,
     user_data: *mut c_void,
   ) -> c_int {
@@ -333,7 +346,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn sha512_digest_update_func(
+  pub extern "C" fn CRYPTO_sha512_digest_update_func(
     digest_context: *mut c_void,
     data: *const u8,
     data_len: size_t,
@@ -349,7 +362,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn sha512_digest_final_func(
+  pub extern "C" fn CRYPTO_sha512_digest_final_func(
     digest_context: *mut c_void,
     output: *mut *mut signal_buffer,
     user_data: *mut c_void,
@@ -366,7 +379,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn sha512_digest_cleanup_func(
+  pub extern "C" fn CRYPTO_sha512_digest_cleanup_func(
     digest_context: *mut c_void,
     user_data: *mut c_void,
   ) {
@@ -376,7 +389,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn encrypt_func(
+  pub extern "C" fn CRYPTO_encrypt_func(
     output: *mut *mut signal_buffer,
     cipher: c_int,
     key: *const u8,
@@ -410,7 +423,7 @@ pub mod c_abi_impl {
   }
 
   #[no_mangle]
-  pub extern "C" fn decrypt_func(
+  pub extern "C" fn CRYPTO_decrypt_func(
     output: *mut *mut signal_buffer,
     cipher: c_int,
     key: *const u8,
@@ -446,9 +459,10 @@ pub mod c_abi_impl {
 
 pub mod via_native {
   use super::c_abi_impl::{
-    decrypt_func, encrypt_func, hmac_sha256_cleanup_func, hmac_sha256_final_func,
-    hmac_sha256_init_func, hmac_sha256_update_func, random_func, sha512_digest_cleanup_func,
-    sha512_digest_final_func, sha512_digest_init_func, sha512_digest_update_func,
+    CRYPTO_decrypt_func, CRYPTO_encrypt_func, CRYPTO_hmac_sha256_cleanup_func,
+    CRYPTO_hmac_sha256_final_func, CRYPTO_hmac_sha256_init_func, CRYPTO_hmac_sha256_update_func,
+    CRYPTO_random_func, CRYPTO_sha512_digest_cleanup_func, CRYPTO_sha512_digest_final_func,
+    CRYPTO_sha512_digest_init_func, CRYPTO_sha512_digest_update_func,
   };
   use super::crypto_impl::DefaultCrypto;
   use super::generic::CryptoProvider;
@@ -466,17 +480,17 @@ pub mod via_native {
   impl<P: CryptoProvider> From<P> for signal_crypto_provider {
     fn from(provider: P) -> Self {
       signal_crypto_provider {
-        random_func: Some(random_func),
-        hmac_sha256_init_func: Some(hmac_sha256_init_func),
-        hmac_sha256_update_func: Some(hmac_sha256_update_func),
-        hmac_sha256_final_func: Some(hmac_sha256_final_func),
-        hmac_sha256_cleanup_func: Some(hmac_sha256_cleanup_func),
-        sha512_digest_init_func: Some(sha512_digest_init_func),
-        sha512_digest_update_func: Some(sha512_digest_update_func),
-        sha512_digest_final_func: Some(sha512_digest_final_func),
-        sha512_digest_cleanup_func: Some(sha512_digest_cleanup_func),
-        encrypt_func: Some(encrypt_func),
-        decrypt_func: Some(decrypt_func),
+        random_func: Some(CRYPTO_random_func),
+        hmac_sha256_init_func: Some(CRYPTO_hmac_sha256_init_func),
+        hmac_sha256_update_func: Some(CRYPTO_hmac_sha256_update_func),
+        hmac_sha256_final_func: Some(CRYPTO_hmac_sha256_final_func),
+        hmac_sha256_cleanup_func: Some(CRYPTO_hmac_sha256_cleanup_func),
+        sha512_digest_init_func: Some(CRYPTO_sha512_digest_init_func),
+        sha512_digest_update_func: Some(CRYPTO_sha512_digest_update_func),
+        sha512_digest_final_func: Some(CRYPTO_sha512_digest_final_func),
+        sha512_digest_cleanup_func: Some(CRYPTO_sha512_digest_cleanup_func),
+        encrypt_func: Some(CRYPTO_encrypt_func),
+        decrypt_func: Some(CRYPTO_decrypt_func),
         user_data: Box::into_raw(Box::new(provider)) as *mut c_void,
       }
     }
@@ -498,6 +512,7 @@ pub mod via_native {
     }
   }
 
+  /* FIXME: make this impl automatic? rustc yells :( */
   impl ContextRegisterable for DefaultCrypto {
     fn register(self) -> Result<(), SignalError> {
       <Self as SeparateFromContextRegisterable<signal_crypto_provider>>::register(self)

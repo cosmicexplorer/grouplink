@@ -75,13 +75,13 @@ pub mod recursive_locking_functions {
     use std::os::raw::c_void;
 
     #[no_mangle]
-    pub extern "C" fn lock_func(user_data: *mut c_void) {
+    pub extern "C" fn LOCK_lock_func(user_data: *mut c_void) {
       let context: &mut Context = unsafe { get_mut_ctx(user_data) };
       context.get_aux().locker.lock();
     }
 
     #[no_mangle]
-    pub extern "C" fn unlock_func(user_data: *mut c_void) {
+    pub extern "C" fn LOCK_unlock_func(user_data: *mut c_void) {
       let context: &mut Context = unsafe { get_mut_ctx(user_data) };
       context.get_aux().locker.unlock();
     }
@@ -124,7 +124,7 @@ pub mod log_function {
     use std::str;
 
     #[no_mangle]
-    pub extern "C" fn log_func(
+    pub extern "C" fn LOG_log_func(
       level: c_int,
       message: *const c_char,
       len: SizeType,
@@ -149,5 +149,162 @@ pub mod log_function {
         }
       }
     }
+  }
+}
+
+pub mod stores {
+  pub mod session_store {
+    pub mod generic {
+      pub trait SessionStore {
+        fn load_session();
+        fn get_sub_device_sessions();
+        fn store_session();
+        fn contains_session();
+        fn delete_session();
+        fn delete_all_sessions();
+        fn destroy();
+      }
+    }
+
+    pub mod store_impl {
+      use super::generic::SessionStore;
+
+      pub struct DefaultSessionStore();
+
+      impl SessionStore for DefaultSessionStore {}
+    }
+
+    pub mod c_abi_impl {
+      use std::os::raw::{c_char, c_int, c_void};
+
+      #[no_mangle]
+      extern "C" fn SESSION_load_session_func(
+        record: *mut *mut signal_buffer,
+        user_record: *mut *mut signal_buffer,
+        address: *const signal_protocol_address,
+        user_data: *mut c_void,
+      ) -> c_int {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+
+      #[no_mangle]
+      extern "C" fn SESSION_get_sub_device_sessions_func(
+        sessions: *mut *mut signal_int_list,
+        name: *const c_char,
+        name_len: size_t,
+        user_data: *mut c_void,
+      ) -> c_int {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+
+      #[no_mangle]
+      extern "C" fn SESSION_store_session_func(
+        address: *const signal_protocol_address,
+        record: *mut u8,
+        record_len: size_t,
+        user_record: *mut u8,
+        user_record_len: size_t,
+        user_data: *mut c_void,
+      ) -> c_int {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+
+      #[no_mangle]
+      extern "C" fn SESSION_contains_session_func(
+        address: *const signal_protocol_address,
+        user_data: *mut c_void,
+      ) -> c_int {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+
+      #[no_mangle]
+      extern "C" fn SESSION_delete_session_func(
+        address: *const signal_protocol_address,
+        user_data: *mut c_void,
+      ) -> c_int {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+
+      #[no_mangle]
+      extern "C" fn SESSION_delete_all_sessions_func(
+        name: *const c_char,
+        name_len: size_t,
+        user_data: *mut c_void,
+      ) -> c_int {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+
+      #[no_mangle]
+      extern "C" fn SESSION_destroy_func(user_data: *mut c_void) {
+        unimplemented!("TODO: OMG THE SESSION STORE!!!");
+      }
+    }
+
+    pub mod via_native {
+      use super::c_abi_impl::{
+        SESSION_contains_session_func, SESSION_delete_all_sessions_func,
+        SESSION_delete_session_func, SESSION_destroy_func, SESSION_get_sub_device_sessions_func,
+        SESSION_load_session_func, SESSION_store_session_func,
+      };
+      use super::generic::SessionStore;
+      use super::store_impl::DefaultSessionStore;
+
+      use crate::gen::{
+        signal_protocol_session_store, signal_protocol_store_context_set_session_store,
+      };
+
+      use std::os::raw::c_void;
+
+      impl<S: SessionStore> From<S> for signal_protocol_session_store {
+        fn from(store: S) -> Self {
+          signal_protocol_session_store {
+            load_session_func: Some(SESSION_load_session_func),
+            get_sub_device_sessions_func: Some(SESSION_get_sub_device_sessions_func),
+            store_session_func: Some(SESSION_store_session_func),
+            contains_session_func: Some(SESSION_contains_session_func),
+            delete_session_func: Some(SESSION_delete_session_func),
+            delete_all_sessions_func: Some(SESSION_delete_all_sessions_func),
+            destroy_func: Some(SESSION_destroy_func),
+            user_data: Box::into_raw(Box::new(store)) as *mut c_void,
+          }
+        }
+      }
+
+      impl SeparateFromContextRegisterable<signal_protocol_session_store> for DefaultSessionStore {
+        fn modify_context(
+          ctx: &'static mut Context,
+          native: signal_protocol_session_store,
+        ) -> Result<(), SignalError> {
+          let result: Result<(), SignalError> = SignalNativeResult::call_method((), |()| {
+            let ctx = ctx.as_mut().get_mut_ptr();
+            unsafe { signal_protocol_store_context_set_session_store(ctx, &*&native) }
+          })
+          .into();
+          result
+        }
+      }
+
+      impl ContextRegisterable for DefaultSessionStore {
+        fn register(self) -> Result<(), SignalError> {
+          <Self as SeparateFromContextRegisterable<signal_protocol_session_store>>::register(self)
+        }
+      }
+    }
+  }
+
+  pub mod pre_key_store {
+    pub trait PreKeyStore {}
+  }
+
+  pub mod signed_pre_key_store {
+    pub trait SignedPreKeyStore {}
+  }
+
+  pub mod identity_key_store {
+    pub trait IdentityKyeStore {}
+  }
+
+  pub mod sender_key_store {
+    pub trait SenderKeyStore {}
   }
 }

@@ -31,17 +31,15 @@
 #![allow(clippy::mutex_atomic)]
 // Avoid docstrings on every unsafe method.
 #![allow(clippy::missing_safety_doc)]
-
-pub mod buffer;
-pub mod global_context_manipulation;
-
 // We *only* use unsafe pointer dereferences when we implement the libsignal callbacks, so it is
 // nicer to list internal minor calls as unsafe, than to mark the whole function as unsafe which may
 // hide other unsafeness.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub mod crypto_provider;
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+pub mod buffer;
+pub mod crypto_provider;
 pub mod error;
+pub mod global_context_manipulation;
 pub mod handles;
 
 mod native_bindings;
@@ -242,28 +240,6 @@ pub mod log_level {
         Self::Debug => SG_LOG_DEBUG,
       }
     }
-  }
-}
-
-pub mod stores {
-  pub mod session_store {
-    pub trait SessionStore {}
-  }
-
-  pub mod pre_key_store {
-    pub trait PreKeyStore {}
-  }
-
-  pub mod signed_pre_key_store {
-    pub trait SignedPreKeyStore {}
-  }
-
-  pub mod identity_key_store {
-    pub trait IdentityKyeStore {}
-  }
-
-  pub mod sender_key_store {
-    pub trait SenderKeyStore {}
   }
 }
 

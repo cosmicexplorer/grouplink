@@ -1,3 +1,6 @@
+/* TODO: These are handles in LIVE contexts, aka data that is gone (?) after a process execution.
+ * Persistent identities will require a *tad* more effort. */
+
 pub mod handled {
   use crate::handle::*;
 
@@ -131,19 +134,19 @@ mod global_context {
     /* Locker */
     use crate::gen::signal_context_set_locking_functions;
     use crate::global_context_manipulation::recursive_locking_functions::c_abi_impl::{
-      lock_func, unlock_func,
+      LOCK_lock_func, LOCK_unlock_func,
     };
     let result: Result<(), SignalError> = SignalNativeResult::call_method((), |()| unsafe {
-      signal_context_set_locking_functions(ctx, Some(lock_func), Some(unlock_func))
+      signal_context_set_locking_functions(ctx, Some(LOCK_lock_func), Some(LOCK_unlock_func))
     })
     .into();
     result?;
 
     /* Logger */
     use crate::gen::signal_context_set_log_function;
-    use crate::global_context_manipulation::log_function::c_abi_impl::log_func;
+    use crate::global_context_manipulation::log_function::c_abi_impl::LOG_log_func;
     let result: Result<(), SignalError> = SignalNativeResult::call_method((), |()| unsafe {
-      signal_context_set_log_function(ctx, Some(log_func))
+      signal_context_set_log_function(ctx, Some(LOG_log_func))
     })
     .into();
     result?;
