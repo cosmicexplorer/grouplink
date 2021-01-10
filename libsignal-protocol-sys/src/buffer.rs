@@ -1,5 +1,6 @@
 mod protocol {
-  use crate::handles::handled::Handled;
+  use crate::handles::Handled;
+  use crate::liveness::{Sensitive, Sensitivity};
 
   use std::convert::{AsMut, AsRef, From};
   use std::default::Default;
@@ -57,23 +58,6 @@ mod protocol {
 
   pub trait BufferOps: BufferAllocateable + BufferReferrable {}
 
-  #[derive(Clone, Debug, Copy)]
-  pub enum Sensitivity {
-    Sensitive,
-    Idk,
-  }
-
-  impl Default for Sensitivity {
-    fn default() -> Self {
-      /* FIXME: default to bzeroing buffers? */
-      Self::Sensitive
-    }
-  }
-
-  pub trait Sensitive {
-    fn as_sensitivity(&self) -> Sensitivity;
-  }
-
   pub trait BufferWrapper<StructType, Aux: Clone, I, E>:
     Handled<StructType, Aux, I, E> + BufferOps + Sensitive
   {
@@ -81,10 +65,6 @@ mod protocol {
 }
 
 mod signal_native_impl {
-  use std::convert::{AsMut, AsRef, From};
-  use std::default::Default;
-  use std::slice;
-
   use super::protocol::*;
 
   use crate::error::SignalError;
@@ -94,7 +74,12 @@ mod signal_native_impl {
     signal_buffer_len, size_t,
   };
   use crate::handle::Handle;
-  use crate::handles::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+  use crate::handles::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+  use crate::liveness::{Sensitive, Sensitivity};
+
+  use std::convert::{AsMut, AsRef, From};
+  use std::default::Default;
+  use std::slice;
 
   pub type Inner = signal_buffer;
 
@@ -247,7 +232,8 @@ mod signal_native_impl {
 }
 
 pub mod buffers {
-  use crate::buffer::{Buffer, BufferCopy, BufferOps, BufferSource, Sensitivity};
+  use crate::buffer::{Buffer, BufferCopy, BufferOps, BufferSource};
+  use crate::liveness::Sensitivity;
 
   pub trait WrappedBufferable<Buf: BufferOps> {
     fn wrapped_buffer(&mut self) -> Buf;
@@ -366,6 +352,7 @@ pub mod buffers {
   pub mod digest {
     use super::WrappedBufferable;
     use crate::buffer::*;
+    use crate::liveness::Sensitivity;
 
     pub trait Digester<Buf: BufferOps>: WrappedBufferable<Buf> {
       type Args;

@@ -41,6 +41,7 @@ pub mod crypto_provider;
 pub mod error;
 pub mod global_context_manipulation;
 pub mod handles;
+pub mod liveness;
 
 mod native_bindings;
 use native_bindings::generated_bindings as gen;
@@ -78,9 +79,7 @@ pub mod cell {
 pub mod handle {
   use parking_lot::RwLock;
 
-  use std::mem;
   use std::ops::{Deref, DerefMut};
-  use std::os::raw::c_void;
   use std::sync::Arc;
 
   pub type ConstPointer<T> = *const T;
@@ -124,15 +123,6 @@ pub mod handle {
       inner_ptr
     }
   }
-
-  ///
-  /// This method is intended for implementors of #[no_mangle] extern "C" fn APIs which are made to
-  /// store `user_data` information in a buffer provided again to other callback methods.
-  pub unsafe fn get_mut_ctx<'a, T>(user_data: *mut c_void) -> &'a mut T {
-    let user_data: *mut T = mem::transmute::<*mut c_void, *mut T>(user_data);
-    assert!(!user_data.is_null());
-    &mut *user_data
-  }
 }
 
 mod internal_error {
@@ -141,6 +131,7 @@ mod internal_error {
     extensions::ShiftedErrorCodeable,
     foundations::{ReturnCode, MINIMUM},
   };
+  use crate::global_context_manipulation::stores::StoreError;
   use crate::log_level::LogCode;
 
   use std::convert::From;
@@ -151,12 +142,19 @@ mod internal_error {
     InvalidLogLevel(LogCode),
     InvalidCipherType(CipherCode),
     InvalidUtf8(str::Utf8Error),
+    Store(StoreError),
     Unknown,
   }
 
   impl From<str::Utf8Error> for InternalError {
     fn from(err: str::Utf8Error) -> Self {
       Self::InvalidUtf8(err)
+    }
+  }
+
+  impl From<StoreError> for InternalError {
+    fn from(err: StoreError) -> Self {
+      Self::Store(err)
     }
   }
 
@@ -170,6 +168,97 @@ mod internal_error {
         Self::InvalidCipherType(_) => -2,
         Self::InvalidUtf8(_) => -3,
         Self::Unknown => -4,
+      }
+    }
+  }
+}
+
+pub mod util {
+  use std::mem;
+  use std::os::raw::c_void;
+
+  ///
+  /// This method is intended for implementors of #[no_mangle] extern "C" fn APIs which are made to
+  /// store `user_data` information in a buffer provided again to other callback methods.
+  pub unsafe fn get_mut_ctx<'a, T>(user_data: *mut c_void) -> &'a mut T {
+    let user_data: *mut T = mem::transmute::<*mut c_void, *mut T>(user_data);
+    assert!(!user_data.is_null());
+    &mut *user_data
+  }
+
+  pub trait BidirectionalConstruction {
+    type Native;
+    fn into_native(self) -> Self::Native;
+    fn from_native(native: Self::Native) -> Self;
+  }
+
+  pub mod signed_data {
+    use crate::gen::size_t as SizeType;
+
+    use std::mem;
+    use std::slice;
+
+    pub unsafe fn i_slice<'a>(src: *const i8, len: SizeType) -> &'a [i8] {
+      slice::from_raw_parts(src, len as usize)
+    }
+    pub unsafe fn u_slice<'a>(src: *const u8, len: SizeType) -> &'a [u8] {
+      slice::from_raw_parts(src, len as usize)
+    }
+
+    pub unsafe fn i2u(signed_data: &[i8]) -> &[u8] {
+      mem::transmute::<&[i8], &[u8]>(signed_data)
+    }
+    pub unsafe fn u2i(unsigned_data: &[u8]) -> &[i8] {
+      mem::transmute::<&[u8], &[i8]>(unsigned_data)
+    }
+  }
+}
+
+pub mod address {
+  use crate::gen::{signal_protocol_address, size_t as SizeType};
+  use crate::util::BidirectionalConstruction;
+
+  use std::mem;
+  use std::slice;
+
+  #[derive(Copy, Clone, Debug)]
+  pub struct DeviceId {
+    id: i32,
+  }
+
+  impl BidirectionalConstruction for DeviceId {
+    type Native = i32;
+    fn into_native(self) -> i32 {
+      self.id
+    }
+    fn from_native(native: i32) -> Self {
+      Self { id: native }
+    }
+  }
+
+  #[derive(Clone, Debug)]
+  pub struct Address<'a> {
+    name: &'a [u8],
+    device_id: DeviceId,
+  }
+
+  impl<'a> BidirectionalConstruction for Address<'a> {
+    type Native = signal_protocol_address;
+    fn into_native(self) -> signal_protocol_address {
+      let len = self.name.len();
+      let id = self.device_id.into_native();
+      signal_protocol_address {
+        name: self.name.as_ptr() as *const i8,
+        name_len: len as SizeType,
+        device_id: id,
+      }
+    }
+    fn from_native(native: signal_protocol_address) -> Self {
+      assert_eq!(mem::size_of::<i8>(), mem::size_of::<u8>());
+      let modified_name = unsafe { mem::transmute::<*const i8, *const u8>(native.name) };
+      Self {
+        name: unsafe { slice::from_raw_parts(modified_name, native.name_len as usize) },
+        device_id: DeviceId::from_native(native.device_id),
       }
     }
   }

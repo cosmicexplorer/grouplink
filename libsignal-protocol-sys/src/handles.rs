@@ -181,6 +181,10 @@ mod global_context {
     };
   }
 
+  pub trait WithContext {
+    fn get_signal_context(&mut self) -> &mut Context;
+  }
+
   pub(crate) trait HasWriteableContext<'a> {
     fn writeable_context(self) -> &'a mut Context;
   }
@@ -212,7 +216,7 @@ pub mod data_store {
   use std::convert::{AsMut, AsRef};
   use std::ptr;
 
-  use super::global_context::{Context, GlobalContext};
+  use super::global_context::Context;
   use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{
@@ -225,14 +229,18 @@ pub mod data_store {
     handle: Handle<signal_protocol_store_context>,
   }
 
-  impl GlobalContext for DataStore {}
-
-  impl DataStore {
-    pub fn new() -> Self {
-      let ctx: &mut Context = Self::get_global_writeable_context();
-      Self::handled_instance(ctx, ()).expect("creating signal DataStore context failed!")
-    }
+  pub trait WithDataStore {
+    fn get_signal_data_store(&mut self) -> &mut DataStore;
   }
+
+  /* impl GlobalContext for DataStore {} */
+
+  /* impl DataStore { */
+  /*   pub fn new() -> Self { */
+  /*     let ctx: &mut Context = Self::get_global_writeable_context(); */
+  /*     Self::handled_instance(ctx, ()).expect("creating signal DataStore context failed!") */
+  /*   } */
+  /* } */
 
   impl GetAux<()> for DataStore {
     fn get_aux(&self) -> &() {
@@ -280,6 +288,10 @@ pub mod data_store {
 
   impl Handled<signal_protocol_store_context, (), &mut Context, SignalError> for DataStore {}
 
+  pub(crate) trait HasWriteableStoreContext<'a> {
+    fn writeable_context(self) -> &'a mut Context;
+  }
+
   impl Drop for DataStore {
     fn drop(&mut self) {
       self.handled_drop();
@@ -289,4 +301,5 @@ pub mod data_store {
 
 pub use handled::*;
 
-pub(crate) use global_context::{Context, GlobalContext};
+pub(crate) use data_store::{DataStore, WithDataStore};
+pub(crate) use global_context::{Context, WithContext};

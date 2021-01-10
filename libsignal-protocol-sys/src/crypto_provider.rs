@@ -153,10 +153,19 @@ pub mod crypto_impl {
   use crate::buffer::*;
   use crate::cipher::CipherType;
   use crate::error::SignalError;
+  use crate::handles::{Context, WithContext};
 
   use std::mem;
 
-  pub struct DefaultCrypto;
+  pub struct DefaultCrypto {
+    context: Context,
+  }
+
+  impl WithContext for DefaultCrypto {
+    fn get_signal_context(&mut self) -> &mut Context {
+      &mut self.context
+    }
+  }
 
   impl CryptoProvider for DefaultCrypto {
     fn random(&mut self, _data: &mut [u8]) -> Result<(), SignalError> {
@@ -237,7 +246,8 @@ pub mod c_abi_impl {
   use crate::cipher::{CipherCode, CipherType};
   use crate::error::{ErrorCodeable, SUCCESS};
   use crate::gen::{signal_buffer, size_t};
-  use crate::handle::{get_mut_ctx, Handle};
+  use crate::handle::Handle;
+  use crate::util::get_mut_ctx;
 
   use std::ops::DerefMut;
   use std::os::raw::{c_int, c_void};
@@ -472,7 +482,7 @@ pub mod via_native {
   use crate::global_context_manipulation::generics::{
     ContextRegisterable, SeparateFromContextRegisterable,
   };
-  use crate::handles::{Context, GlobalContext};
+  use crate::handles::{Context, WithContext};
 
   use std::convert::AsMut;
   use std::os::raw::c_void;
@@ -496,11 +506,14 @@ pub mod via_native {
     }
   }
 
-  impl GlobalContext for DefaultCrypto {}
-
   impl SeparateFromContextRegisterable<signal_crypto_provider> for DefaultCrypto {
+    type Ctx = Context;
+    fn get_context(&mut self) -> &mut Self::Ctx {
+      self.get_signal_context()
+    }
+
     fn modify_context(
-      ctx: &'static mut Context,
+      ctx: &mut Context,
       native: signal_crypto_provider,
     ) -> Result<(), SignalError> {
       let result: Result<(), SignalError> = SignalNativeResult::call_method((), |()| {

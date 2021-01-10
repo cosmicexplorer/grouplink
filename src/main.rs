@@ -29,12 +29,13 @@
 
 use std::io;
 
-mod group_fungible;
+mod identity;
 
 pub fn main() -> io::Result<()> {
-  let g = group_fungible::GroupFungible::new();
-  let buf: &[u8] = g.buf.as_ref();
-  println!("ok: {}", std::str::from_utf8(buf).unwrap());
+  /* let g = identity::GroupFungible::new(); */
+  /* let buf: &[u8] = g.buf.as_ref(); */
+  /* println!("ok: {}", std::str::from_utf8(buf).unwrap()); */
+  eprintln!("OOPS WE COMMENTED OUT ANY CHANGES IN MAIN.RS WHOOPSIES!!!");
   Ok(())
 }
 
