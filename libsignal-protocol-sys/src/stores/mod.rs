@@ -51,6 +51,8 @@ pub mod generics {
   }
 }
 
+/* This one does not use a "store" interface, and it does crypto ops! Otherwise it is treated
+ * exactly the same. */
 pub mod crypto_provider;
 
 pub mod identity_key_store;

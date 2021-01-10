@@ -17,6 +17,16 @@ We finally reconstitute this cryptosystem into a messaging system:
 
 - [x] **Confirmed** that the Signal Protocol itself has no dependency on a phone number, just the app.
 - [ ] **TODO: WE ARE HERE** Perform a minimal enc/dec test for a buffer.
+    - [ ] Remaining stores to implement:
+        - [x] **`crypto_provider`**
+        - [x] **`session_store`**
+        - [ ] `identity_key_store`
+        - [ ] `pre_key_store`
+        - [ ] `sender_key_store`
+        - [ ] `signed_pre_key_store`
+    - [ ] Discuss memory motion through the stores a bit with `@ireneista` and co.
+        - Try to agree on which actions/entities each corresponds to in the double-ratchet [^double-ratchet] or sesame [^sesame-paper] protocols.
+
 
 Then, see if the following still makes sense:
 - [ ] Add an "endpoint" to the Signal Protocol to create a new *group-fungible* identity, which doesn't do anything yet.
