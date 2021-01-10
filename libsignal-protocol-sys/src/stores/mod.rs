@@ -31,12 +31,35 @@
 // hide other unsafeness.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+pub mod generics {
+  pub trait ContextRegisterable<E> {
+    fn register(self) -> Result<(), E>;
+  }
+
+  pub trait SeparateFromContextRegisterable<NativeStruct, E>: Into<NativeStruct> + Clone {
+    type Ctx;
+    fn get_context(&mut self) -> &mut Self::Ctx;
+
+    fn register(mut self) -> Result<(), E> {
+      let other = self.clone();
+      let ctx: &mut Self::Ctx = self.get_context();
+      let native: NativeStruct = other.into();
+      Self::modify_context(ctx, native)
+    }
+
+    fn modify_context(ctx: &mut Self::Ctx, native: NativeStruct) -> Result<(), E>;
+  }
+}
+
+pub mod crypto_provider;
+
 pub mod identity_key_store;
 pub mod pre_key_store;
 pub mod sender_key_store;
 pub mod session_store;
 pub mod signed_pre_key_store;
 
+use crate::error::SignalError as CryptoError;
 use identity_key_store::generic::Error as IdentityKeyError;
 use pre_key_store::generic::Error as PreKeyError;
 use sender_key_store::generic::Error as SenderKeyError;
@@ -50,6 +73,7 @@ pub enum StoreError {
   SenderKey(SenderKeyError),
   Session(SessionError),
   SignedPreKey(SignedPreKeyError),
+  Crypto(CryptoError),
 }
 
 impl From<IdentityKeyError> for StoreError {
@@ -75,5 +99,10 @@ impl From<SessionError> for StoreError {
 impl From<SignedPreKeyError> for StoreError {
   fn from(err: SignedPreKeyError) -> Self {
     Self::SignedPreKey(err)
+  }
+}
+impl From<CryptoError> for StoreError {
+  fn from(err: CryptoError) -> Self {
+    Self::Crypto(err)
   }
 }

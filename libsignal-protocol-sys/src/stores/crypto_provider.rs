@@ -480,10 +480,8 @@ pub mod via_native {
 
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{signal_context_set_crypto_provider, signal_crypto_provider};
-  use crate::global_context_manipulation::generics::{
-    ContextRegisterable, SeparateFromContextRegisterable,
-  };
   use crate::handle::{Context, WithContext};
+  use crate::stores::generics::{SeparateFromContextRegisterable, ContextRegisterable};
 
   use std::convert::AsMut;
   use std::os::raw::c_void;
@@ -507,7 +505,7 @@ pub mod via_native {
     }
   }
 
-  impl SeparateFromContextRegisterable<signal_crypto_provider> for DefaultCrypto {
+  impl SeparateFromContextRegisterable<signal_crypto_provider, SignalError> for DefaultCrypto {
     type Ctx = Context;
     fn get_context(&mut self) -> &mut Self::Ctx {
       self.get_signal_context()
@@ -527,9 +525,9 @@ pub mod via_native {
   }
 
   /* FIXME: make this impl automatic? rustc yells :( */
-  impl ContextRegisterable for DefaultCrypto {
+  impl ContextRegisterable<SignalError> for DefaultCrypto {
     fn register(self) -> Result<(), SignalError> {
-      <Self as SeparateFromContextRegisterable<signal_crypto_provider>>::register(self)
+      <Self as SeparateFromContextRegisterable<signal_crypto_provider, _>>::register(self)
     }
   }
 }

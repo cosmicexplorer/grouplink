@@ -37,9 +37,7 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 pub mod buffer;
-pub mod crypto_provider;
 pub mod error;
-pub mod global_context_manipulation;
 pub mod handle;
 pub mod list;
 pub mod liveness;

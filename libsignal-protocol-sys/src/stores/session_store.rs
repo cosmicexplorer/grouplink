@@ -237,10 +237,8 @@ pub mod via_native {
   use crate::gen::{
     signal_protocol_session_store, signal_protocol_store_context_set_session_store,
   };
-  use crate::global_context_manipulation::generics::{
-    ContextRegisterable, SeparateFromContextRegisterable,
-  };
   use crate::handle::{DataStore, WithDataStore};
+  use crate::stores::generics::{SeparateFromContextRegisterable, ContextRegisterable};
 
   use std::os::raw::c_void;
 
@@ -259,7 +257,9 @@ pub mod via_native {
     }
   }
 
-  impl SeparateFromContextRegisterable<signal_protocol_session_store> for DefaultSessionStore {
+  impl SeparateFromContextRegisterable<signal_protocol_session_store, SignalError>
+    for DefaultSessionStore
+  {
     type Ctx = DataStore;
     fn get_context(&mut self) -> &mut Self::Ctx {
       self.get_signal_data_store()
@@ -278,9 +278,9 @@ pub mod via_native {
     }
   }
 
-  impl ContextRegisterable for DefaultSessionStore {
+  impl ContextRegisterable<SignalError> for DefaultSessionStore {
     fn register(self) -> Result<(), SignalError> {
-      <Self as SeparateFromContextRegisterable<signal_protocol_session_store>>::register(self)
+      <Self as SeparateFromContextRegisterable<signal_protocol_session_store, _>>::register(self)
     }
   }
 }
