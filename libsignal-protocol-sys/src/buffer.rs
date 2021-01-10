@@ -1,5 +1,5 @@
 mod protocol {
-  use crate::handles::Handled;
+  use crate::handle::Handled;
   use crate::liveness::{Sensitive, Sensitivity};
 
   use std::convert::{AsMut, AsRef, From};
@@ -67,14 +67,13 @@ mod protocol {
 mod signal_native_impl {
   use super::protocol::*;
 
-  use crate::error::SignalError;
+  use crate::error::{errored::ValidateBufferHasMem, SignalError};
   use crate::gen::{
     signal_buffer, signal_buffer_alloc, signal_buffer_bzero_free, signal_buffer_const_data,
     signal_buffer_copy, signal_buffer_create, signal_buffer_data, signal_buffer_free,
-    signal_buffer_len, size_t,
+    signal_buffer_len, size_t as SizeType,
   };
-  use crate::handle::Handle;
-  use crate::handles::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+  use crate::handle::{Destroyed, GetAux, Handle, Handled, Managed, ViaHandle};
   use crate::liveness::{Sensitive, Sensitivity};
 
   use std::convert::{AsMut, AsRef, From};
@@ -82,24 +81,6 @@ mod signal_native_impl {
   use std::slice;
 
   pub type Inner = signal_buffer;
-
-  type SizeType = size_t;
-
-  fn receive_buffer_mut(buf: *mut Inner) -> Result<*mut Inner, SignalError> {
-    if buf.is_null() {
-      Err(SignalError::NoMemory)
-    } else {
-      Ok(buf)
-    }
-  }
-
-  unsafe fn from_other(buf: *const Inner) -> Result<*mut Inner, SignalError> {
-    receive_buffer_mut(signal_buffer_copy(buf))
-  }
-
-  unsafe fn from_bytes(data: &[u8]) -> Result<*mut Inner, SignalError> {
-    receive_buffer_mut(signal_buffer_create(data.as_ptr(), data.len() as SizeType))
-  }
 
   pub struct Buffer {
     handle: Handle<Inner>,
@@ -126,6 +107,15 @@ mod signal_native_impl {
     }
   }
   /* END: impl ViaHandle */
+
+  /* START: from_*() methods */
+  unsafe fn from_other(buf: *const Inner) -> Result<*mut Inner, SignalError> {
+    SignalError::validate_has_mem(signal_buffer_copy(buf))
+  }
+  unsafe fn from_bytes(data: &[u8]) -> Result<*mut Inner, SignalError> {
+    SignalError::validate_has_mem(signal_buffer_create(data.as_ptr(), data.len() as SizeType))
+  }
+  /* END: from_*() methods */
 
   /* START: impl BufferWrapper */
   impl Sensitive for Buffer {

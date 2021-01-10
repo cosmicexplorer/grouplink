@@ -153,10 +153,11 @@ pub mod crypto_impl {
   use crate::buffer::*;
   use crate::cipher::CipherType;
   use crate::error::SignalError;
-  use crate::handles::{Context, WithContext};
+  use crate::handle::{Context, WithContext};
 
   use std::mem;
 
+  #[derive(Clone, Debug)]
   pub struct DefaultCrypto {
     context: Context,
   }
@@ -482,7 +483,7 @@ pub mod via_native {
   use crate::global_context_manipulation::generics::{
     ContextRegisterable, SeparateFromContextRegisterable,
   };
-  use crate::handles::{Context, WithContext};
+  use crate::handle::{Context, WithContext};
 
   use std::convert::AsMut;
   use std::os::raw::c_void;

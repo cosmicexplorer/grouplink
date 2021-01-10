@@ -1,8 +1,59 @@
 /* TODO: These are handles in LIVE contexts, aka data that is gone (?) after a process execution.
  * Persistent identities will require a *tad* more effort. */
 
+pub mod generic {
+  use parking_lot::RwLock;
+
+  use std::ops::{Deref, DerefMut};
+  use std::sync::Arc;
+
+  pub type ConstPointer<T> = *const T;
+  pub type Pointer<T> = *mut T;
+
+  #[derive(Clone, Debug)]
+  pub struct Handle<T> {
+    inner: Arc<RwLock<Pointer<T>>>,
+  }
+  unsafe impl<T> Send for Handle<T> {}
+  unsafe impl<T> Sync for Handle<T> {}
+
+  impl<T> Deref for Handle<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+      unsafe { &**self.inner.read() }
+    }
+  }
+
+  impl<T> DerefMut for Handle<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+      unsafe { &mut **self.inner.write() }
+    }
+  }
+
+  impl<T> Handle<T> {
+    pub fn new(p: Pointer<T>) -> Self {
+      Self {
+        inner: Arc::new(RwLock::new(p)),
+      }
+    }
+
+    pub fn get_ptr(&self) -> ConstPointer<T> {
+      let inner: &T = self.deref();
+      let inner_ptr: *const T = inner;
+      inner_ptr
+    }
+
+    pub fn get_mut_ptr(&mut self) -> Pointer<T> {
+      let inner: &mut T = self.deref_mut();
+      let inner_ptr: *mut T = inner;
+      inner_ptr
+    }
+  }
+}
+
 pub mod handled {
-  use crate::handle::*;
+  use super::generic::*;
 
   use std::convert::{AsMut, AsRef};
 
@@ -76,15 +127,16 @@ mod global_context {
   /* NB: We would like to be able to rely on a separate pointer carrying this information as in
    * crypto_provider.rs, but since we can't (TODO: is this intentional???), we have to rely on
    * deeply interworked imports. */
-  #[derive(Clone)]
-  pub(crate) struct ContextAux {
+  #[derive(Clone, Debug)]
+  pub struct ContextAux {
     pub locker: Arc<dyn Locker>,
     pub logger: Arc<dyn Logger>,
   }
   unsafe impl Send for ContextAux {}
   unsafe impl Sync for ContextAux {}
 
-  pub(crate) struct Context {
+  #[derive(Clone, Debug)]
+  pub struct Context {
     handle: Handle<signal_context>,
     aux: ContextAux,
   }
@@ -172,7 +224,7 @@ mod global_context {
   }
 
   lazy_static! {
-    pub(crate) static ref GLOBAL_CONTEXT: EvenMoreUnsafeCell<Context> = {
+    pub static ref GLOBAL_CONTEXT: EvenMoreUnsafeCell<Context> = {
       let locker: Arc<dyn Locker> = Arc::new(DefaultLocker::new());
       let logger: Arc<dyn Logger> = Arc::new(DefaultLogger());
       let aux = ContextAux { locker, logger };
@@ -185,7 +237,7 @@ mod global_context {
     fn get_signal_context(&mut self) -> &mut Context;
   }
 
-  pub(crate) trait HasWriteableContext<'a> {
+  pub trait HasWriteableContext<'a> {
     fn writeable_context(self) -> &'a mut Context;
   }
 
@@ -195,7 +247,7 @@ mod global_context {
     }
   }
 
-  pub(crate) trait GlobalContext {
+  pub trait GlobalContext {
     fn get_global_writeable_context() -> &'static mut Context {
       let ctx: &mut Context = unsafe { (*GLOBAL_CONTEXT).get() };
       ctx
@@ -225,6 +277,7 @@ pub mod data_store {
   };
   use crate::handle::Handle;
 
+  #[derive(Clone, Debug)]
   pub struct DataStore {
     handle: Handle<signal_protocol_store_context>,
   }
@@ -288,7 +341,7 @@ pub mod data_store {
 
   impl Handled<signal_protocol_store_context, (), &mut Context, SignalError> for DataStore {}
 
-  pub(crate) trait HasWriteableStoreContext<'a> {
+  pub trait HasWriteableStoreContext<'a> {
     fn writeable_context(self) -> &'a mut Context;
   }
 
@@ -299,7 +352,8 @@ pub mod data_store {
   }
 }
 
+pub use generic::*;
 pub use handled::*;
 
-pub(crate) use data_store::{DataStore, WithDataStore};
-pub(crate) use global_context::{Context, WithContext};
+pub use data_store::{DataStore, WithDataStore};
+pub use global_context::{Context, WithContext};

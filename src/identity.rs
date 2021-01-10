@@ -1,7 +1,8 @@
-use libsignal_protocol_sys::buffer::{Buffer, BufferCopy, BufferSource, Sensitivity};
+use libsignal_protocol_sys::{buffer::{Buffer, BufferCopy, BufferSource}, liveness::Sensitivity};
+
 
 pub struct DurableSafeIdentity {
-  id_key_pair: A,
+  id_key_pair: (),
 }
 
 pub trait GroupFungible {}

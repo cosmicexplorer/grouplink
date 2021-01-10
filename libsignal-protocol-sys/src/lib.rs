@@ -40,8 +40,11 @@ pub mod buffer;
 pub mod crypto_provider;
 pub mod error;
 pub mod global_context_manipulation;
-pub mod handles;
+pub mod handle;
+pub mod list;
 pub mod liveness;
+
+pub mod stores;
 
 mod native_bindings;
 use native_bindings::generated_bindings as gen;
@@ -76,63 +79,11 @@ pub mod cell {
   unsafe impl<T> Sync for EvenMoreUnsafeCell<T> {}
 }
 
-pub mod handle {
-  use parking_lot::RwLock;
-
-  use std::ops::{Deref, DerefMut};
-  use std::sync::Arc;
-
-  pub type ConstPointer<T> = *const T;
-  pub type Pointer<T> = *mut T;
-  pub struct Handle<T> {
-    inner: Arc<RwLock<Pointer<T>>>,
-  }
-  unsafe impl<T> Send for Handle<T> {}
-  unsafe impl<T> Sync for Handle<T> {}
-
-  impl<T> Deref for Handle<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-      unsafe { &**self.inner.read() }
-    }
-  }
-
-  impl<T> DerefMut for Handle<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-      unsafe { &mut **self.inner.write() }
-    }
-  }
-
-  impl<T> Handle<T> {
-    pub fn new(p: Pointer<T>) -> Self {
-      Self {
-        inner: Arc::new(RwLock::new(p)),
-      }
-    }
-
-    pub fn get_ptr(&self) -> ConstPointer<T> {
-      let inner: &T = self.deref();
-      let inner_ptr: *const T = inner;
-      inner_ptr
-    }
-
-    pub fn get_mut_ptr(&mut self) -> Pointer<T> {
-      let inner: &mut T = self.deref_mut();
-      let inner_ptr: *mut T = inner;
-      inner_ptr
-    }
-  }
-}
-
 mod internal_error {
   use crate::cipher::CipherCode;
-  use crate::error::{
-    extensions::ShiftedErrorCodeable,
-    foundations::{ReturnCode, MINIMUM},
-  };
-  use crate::global_context_manipulation::stores::StoreError;
+  use crate::error::{ReturnCode, ShiftedErrorCodeable, MINIMUM};
   use crate::log_level::LogCode;
+  use crate::stores::StoreError;
 
   use std::convert::From;
   use std::str;
@@ -167,7 +118,8 @@ mod internal_error {
         Self::InvalidLogLevel(_) => -1,
         Self::InvalidCipherType(_) => -2,
         Self::InvalidUtf8(_) => -3,
-        Self::Unknown => -4,
+        Self::Store(_) => -4,
+        Self::Unknown => -5,
       }
     }
   }
@@ -198,18 +150,30 @@ pub mod util {
     use std::mem;
     use std::slice;
 
-    pub unsafe fn i_slice<'a>(src: *const i8, len: SizeType) -> &'a [i8] {
-      slice::from_raw_parts(src, len as usize)
+    pub fn i_slice<'a>(src: *const i8, len: SizeType) -> &'a [i8] {
+      unsafe { slice::from_raw_parts(src, len as usize) }
     }
-    pub unsafe fn u_slice<'a>(src: *const u8, len: SizeType) -> &'a [u8] {
-      slice::from_raw_parts(src, len as usize)
+    pub fn i_slice_mut<'a>(src: *mut i8, len: SizeType) -> &'a mut [i8] {
+      unsafe { slice::from_raw_parts_mut(src, len as usize) }
+    }
+    pub fn u_slice<'a>(src: *const u8, len: SizeType) -> &'a [u8] {
+      unsafe { slice::from_raw_parts(src, len as usize) }
+    }
+    pub fn u_slice_mut<'a>(src: *mut u8, len: SizeType) -> &'a mut [u8] {
+      unsafe { slice::from_raw_parts_mut(src, len as usize) }
     }
 
-    pub unsafe fn i2u(signed_data: &[i8]) -> &[u8] {
-      mem::transmute::<&[i8], &[u8]>(signed_data)
+    pub fn i2u(signed_data: &[i8]) -> &[u8] {
+      unsafe { mem::transmute::<&[i8], &[u8]>(signed_data) }
     }
-    pub unsafe fn u2i(unsigned_data: &[u8]) -> &[i8] {
-      mem::transmute::<&[u8], &[i8]>(unsigned_data)
+    pub fn i2u_mut(signed_data: &mut [i8]) -> &mut [u8] {
+      unsafe { mem::transmute::<&mut [i8], &mut [u8]>(signed_data) }
+    }
+    pub fn u2i(unsigned_data: &[u8]) -> &[i8] {
+      unsafe { mem::transmute::<&[u8], &[i8]>(unsigned_data) }
+    }
+    pub fn u2i_mut(unsigned_data: &mut [u8]) -> &mut [i8] {
+      unsafe { mem::transmute::<&mut [u8], &mut [i8]>(unsigned_data) }
     }
   }
 }
