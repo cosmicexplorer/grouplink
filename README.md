@@ -8,6 +8,7 @@ We want to build two prototypes of a cryptosystem to support **anonymous, group-
 4. [*live:*](#live) make a p2p protocol, or a single server which supports our modified "grouplink" protocol.
 5. [*safe:*](#safe) research traffic anonymization and formal analysis to conclude that our system is safe.
 
+We also [obsolete the blockchain concept in a later proposed extension](#appendix-a-blockchain-accounting).
 
 # Overarching UX Principles
 We will attempt to apply these wherever reasonable.
