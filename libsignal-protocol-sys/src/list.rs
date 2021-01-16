@@ -28,7 +28,7 @@ pub mod lists {
       signal_buffer_list_bzero_free, signal_buffer_list_copy, signal_buffer_list_free,
       signal_buffer_list_push_back, signal_buffer_list_size, size_t as SizeType,
     };
-    use crate::handle::{Destroyed, GetAux, Handle, Handled, Managed, ViaHandle};
+    use crate::handle::{Destructible, GetAux, Handle, Handled, Managed, ViaHandle};
     use crate::liveness::{Sensitive, Sensitivity};
 
     use std::convert::TryInto;
@@ -79,7 +79,7 @@ pub mod lists {
         &self.sensitivity
       }
     }
-    impl Destroyed<Inner, Sensitivity> for BufferList {
+    impl Destructible<Inner, Sensitivity> for BufferList {
       unsafe fn destroy_raw(t: *mut Inner, aux: &Sensitivity) {
         match aux {
           Sensitivity::Sensitive => signal_buffer_list_bzero_free(t),
@@ -154,7 +154,7 @@ pub mod lists {
       signal_int_list, signal_int_list_alloc, signal_int_list_at, signal_int_list_free,
       signal_int_list_push_back, signal_int_list_size, size_t as SizeType,
     };
-    use crate::handle::{Destroyed, GetAux, Handle, Handled, Managed, ViaHandle};
+    use crate::handle::{Destructible, GetAux, Handle, Handled, Managed, ViaHandle};
 
     use std::convert::TryInto;
 
@@ -189,7 +189,7 @@ pub mod lists {
         &()
       }
     }
-    impl Destroyed<Inner, ()> for IntList {
+    impl Destructible<Inner, ()> for IntList {
       unsafe fn destroy_raw(t: *mut Inner, _aux: &()) {
         signal_int_list_free(t);
       }

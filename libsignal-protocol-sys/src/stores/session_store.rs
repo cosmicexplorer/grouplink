@@ -2,6 +2,7 @@ pub mod generic {
   use crate::address::Address;
   use crate::buffer::Buffer;
   use crate::list::IntList;
+  use crate::
 
   pub struct LoadSessionReturnValue {
     pub record: Buffer,
@@ -19,35 +20,87 @@ pub mod generic {
     NoSuchSessionExists,
   }
 
+  /* FIXME! */
   #[allow(unused_variables)]
   pub trait SessionStore {
-    fn load_session(&mut self, address: Address) -> Result<LoadSessionReturnValue, Error> {
-      unimplemented!("load_session()")
-    }
-    fn get_sub_device_sessions(&mut self, name: &[u8]) -> Result<IntList, Error> {
-      unimplemented!("get_sub_device_sessions()")
-    }
+    ///
+    /// Returns a copy of the serialized session record corresponding to the
+    /// provided recipient ID + device ID tuple.
+    ///
+    /// @param record pointer to a freshly allocated buffer containing the
+    ///     serialized session record. Unset if no record was found.
+    ///     The Signal Protocol library is responsible for freeing this buffer.
+    /// @param user_record pointer to a freshly allocated buffer containing
+    ///     application specific data stored alongside the serialized session
+    ///     record. If no such data exists, then this pointer may be left unset.
+    ///     The Signal Protocol library is responsible for freeing this buffer.
+    /// @param address the address of the remote client
+    /// @return 1 if the session was loaded, 0 if the session was not found, negative on failure
+    ///
+    fn load_session(&mut self, address: Address) -> Result<LoadSessionReturnValue, Error>;
+
+    ///
+    /// Returns all known devices with active sessions for a recipient
+    ///
+    /// @param pointer to an array that will be allocated and populated with the result
+    /// @param name the name of the remote client
+    /// @param name_len the length of the name
+    /// @return size of the sessions array, or negative on failure
+    ///
+    fn get_sub_device_sessions(&mut self, name: &[u8]) -> Result<IntList, Error>;
+
+    ///
+    /// Commit to storage the session record for a given
+    /// recipient ID + device ID tuple.
+    ///
+    /// @param address the address of the remote client
+    /// @param record pointer to a buffer containing the serialized session
+    ///     record for the remote client
+    /// @param record_len length of the serialized session record
+    /// @param user_record pointer to a buffer containing application specific
+    ///     data to be stored alongside the serialized session record for the
+    ///     remote client. If no such data exists, then this pointer will be null.
+    /// @param user_record_len length of the application specific data
+    /// @return 0 on success, negative on failure
+    ///
     fn store_session(
       &mut self,
       address: Address,
       record: &mut [u8],
       user_record: &mut [u8],
-    ) -> Result<(), Error> {
-      unimplemented!("store_session()")
-    }
-    fn contains_session(&mut self, address: Address) -> Result<SessionFound, Error> {
-      unimplemented!("contains_session()")
-    }
-    fn delete_session(&mut self, address: Address) -> Result<(), Error> {
-      unimplemented!("delete_session()")
-    }
-    fn delete_all_sessions(&mut self, name: &[u8]) -> Result<(), Error> {
-      unimplemented!("delete_all_sessions()")
-    }
-    fn destroy(&mut self) {
-      /* TODO: ??? */
-      eprintln!("DESTRUCTION DOES NOTHING YOU FOOL!!! but this function can probably be deleted if we have nothing to clean up (???)");
-    }
+    ) -> Result<(), Error>;
+
+    ///
+    /// Determine whether there is a committed session record for a
+    /// recipient ID + device ID tuple.
+    ///
+    /// @param address the address of the remote client
+    /// @return 1 if a session record exists, 0 otherwise.
+    ///
+    fn contains_session(&mut self, address: Address) -> Result<SessionFound, Error>;
+
+    ///
+    /// Remove a session record for a recipient ID + device ID tuple.
+    ///
+    /// @param address the address of the remote client
+    /// @return 1 if a session was deleted, 0 if a session was not deleted, negative on error
+    ///
+    fn delete_session(&mut self, address: Address) -> Result<(), Error>;
+
+    ///
+    /// Remove the session records corresponding to all devices of a recipient ID.
+    ///
+    /// @param name the name of the remote client
+    /// @param name_len the length of the name
+    /// @return the number of deleted sessions on success, negative on failure
+    ///
+    fn delete_all_sessions(&mut self, name: &[u8]) -> Result<(), Error>;
+
+    ///
+    /// Function called to perform cleanup when the data store context is being
+    /// destroyed.
+    ///
+    fn destroy(&mut self);
   }
 }
 
@@ -82,6 +135,8 @@ pub mod c_abi_impl {
   use crate::stores::StoreError;
   use crate::util::{get_mut_ctx, signed_data::*, BidirectionalConstruction};
 
+  use std::convert::{AsMut, AsRef};
+  use std::ops::{Deref, DerefMut};
   use std::os::raw::{c_char, c_int, c_void};
 
   #[no_mangle]
@@ -238,7 +293,7 @@ pub mod via_native {
     signal_protocol_session_store, signal_protocol_store_context_set_session_store,
   };
   use crate::handle::{DataStore, WithDataStore};
-  use crate::stores::generics::{SeparateFromContextRegisterable, ContextRegisterable};
+  use crate::stores::generics::{ContextRegisterable, SeparateFromContextRegisterable};
 
   use std::os::raw::c_void;
 

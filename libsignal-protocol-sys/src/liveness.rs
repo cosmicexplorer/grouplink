@@ -24,6 +24,23 @@ impl Default for Sensitivity {
   }
 }
 
+pub trait AssuredSensitive {
+  fn as_sensitivity() -> Sensitivity;
+}
+
 pub trait Sensitive {
   fn as_sensitivity(&self) -> Sensitivity;
 }
+
+impl Sensitive for T
+where
+  T: AssuredSensitive,
+{
+  fn as_sensitivity(&self) -> Sensitivity {
+    <Self as AssuredSensitive>::as_sensitivity()
+  }
+}
+
+/* pub trait SensitivityValidated { */
+/*   fn validate(&self) */
+/* } */

@@ -23,6 +23,17 @@ pub mod generic {
   pub trait ErrorCodeable {
     fn into_rc(self) -> ReturnCode;
   }
+
+  impl ErrorCodeable for T
+  where
+    T: Into<E>,
+    E: ErrorCodeable,
+  {
+    fn into_rc(self) -> ReturnCode {
+      let e: E = self.into();
+      e.into_rc()
+    }
+  }
 }
 
 pub mod constants {

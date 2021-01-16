@@ -5,4 +5,4 @@ authors = ["cosmicexplorer"]
 edition = "2018"
 
 [dependencies]
-libsignal-protocol-sys = { path = "./libsignal-protocol-sys" }
+libsignal-client = { path = "./libsignal-client" }

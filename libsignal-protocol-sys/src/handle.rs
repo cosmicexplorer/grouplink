@@ -37,70 +37,201 @@ pub mod generic {
         inner: Arc::new(RwLock::new(p)),
       }
     }
-
-    pub fn get_ptr(&self) -> ConstPointer<T> {
-      let inner: &T = self.deref();
-      let inner_ptr: *const T = inner;
-      inner_ptr
-    }
-
-    pub fn get_mut_ptr(&mut self) -> Pointer<T> {
-      let inner: &mut T = self.deref_mut();
-      let inner_ptr: *mut T = inner;
-      inner_ptr
-    }
   }
 }
 
 pub mod handled {
-  use super::generic::*;
+  use crate::handle::generic::Pointer;
 
-  use std::convert::{AsMut, AsRef};
-
-  pub trait GetAux<Aux> {
-    fn get_aux(&self) -> &Aux;
+  pub trait PointerBacked {
+    type NativeStruct;
+    type PointerBacking = Pointer<Self::NativeStruct>;
   }
 
-  pub trait Destroyed<StructType, Aux> {
-    unsafe fn destroy_raw(t: Pointer<StructType>, aux: &Aux);
-  }
+  pub mod construction {
+    pub use unconnected::Constructible as BaseConstructible;
 
-  pub trait Managed<StructType, Aux, I, E> {
-    unsafe fn create_raw(i: I, aux: &Aux) -> Result<Pointer<StructType>, E>;
+    pub mod unconnected {
+      pub trait Initializable {
+        type InitializationArguments;
+      }
+      pub trait Auxable {
+        type AuxiliaryStateAtStart = ();
+      }
+      pub trait ConstructErrorable {
+        type ConstructError;
+      }
+      pub trait Constructible: Initializable + Auxable + ConstructErrorable {
+        fn create_raw(
+          i: Self::InitializationArguments,
+        ) -> Result<Self::AuxiliaryStateAtStart, Self::ConstructError>;
+      }
+    }
 
-    unsafe fn create_new_handle(i: I, aux: Aux) -> Result<(Handle<StructType>, Aux), E> {
-      let p = Self::create_raw(i, &aux)?;
-      Ok((Handle::new(p), aux))
+    pub mod irreversible {
+      use super::unconnected::Constructible as ParentConstructor;
+
+      pub trait Constructible: ParentConstructor {
+        /* The aux state at rest can be deduced from the initialization state. */
+        type AuxiliaryStateAtStart: From<Self::InitializationArguments>;
+      }
+    }
+
+    pub mod pointer_fungible {
+      use super::super::PointerBacked;
+      use super::unconnected::Constructible as ParentConstructor;
+
+      pub trait Constructible: PointerBacked + ParentConstructor {
+        /* One of the resulting arguments from construction was a pointer. */
+        type PointerBacked: From<Self::AuxiliaryStateAtStart>;
+
+        fn create_raw(
+          i: Self::InitializationArguments,
+        ) -> Result<Self::AuxiliaryStateAtStart, Self::ConstructError>;
+      }
     }
   }
 
-  pub trait ViaHandle<StructType, Aux>:
-    AsRef<Handle<StructType>> + AsMut<Handle<StructType>>
-  {
-    fn from_handle(handle: Handle<StructType>, aux: Aux) -> Self;
-  }
+  pub mod destruction {
+    pub use unconnected::Destructible as BaseDestructor;
 
-  pub trait Handled<StructType, Aux: Clone, I, E>:
-    GetAux<Aux>
-    + Managed<StructType, Aux, I, E>
-    + Destroyed<StructType, Aux>
-    + ViaHandle<StructType, Aux>
-  {
-    fn handled_instance(i: I, aux: Aux) -> Result<Self, E>
-    where
-      Self: Sized,
-    {
-      let (p, s) = unsafe { Self::create_new_handle(i, aux)? };
-      Ok(Self::from_handle(p, s))
+    pub mod unconnected {
+      pub trait DropErrorable {
+        type DropError;
+      }
+      pub trait AuxDroppable {
+        type AuxiliaryStateAtDrop = ();
+      }
+      pub trait ReturnValuable {
+        type ReturnValue = ();
+      }
+
+      pub trait Destructible: AuxDroppable + ReturnValuable + DropErrorable {
+        fn destroy_raw(
+          aux: Self::AuxiliaryStateAtDrop,
+        ) -> Result<Self::ReturnValue, Self::DropError>;
+      }
     }
 
-    fn handled_drop(&mut self)
-    where
-      Self: Sized,
-    {
-      let aux = self.get_aux().clone();
-      let handle: &mut Handle<StructType> = self.as_mut();
-      unsafe { Self::destroy_raw(handle.get_mut_ptr(), &aux) };
+    pub mod irreversible {
+      use super::unconnected::Destructible as ParentDestructor;
+
+      pub trait Destructible: ParentDestructor {
+        /* The return value can be deduced from the aux state at drop. */
+        type ReturnValue: From<Self::AuxiliaryStateAtDrop>;
+      }
+    }
+
+    pub mod pointer_fungible {
+      use super::super::PointerBacked;
+      use super::unconnected::Destructible as ParentDestructor;
+
+      pub trait Destructible: PointerBacked + ParentDestructor {
+        /* One of the objects passed to destroy is a pointer. */
+        type PointerBacking: From<Self::AuxiliaryStateAtDrop>;
+      }
+    }
+  }
+
+  pub mod inner {
+    pub mod coherent {
+      use super::super::construction::unconnected::Constructible;
+      use super::super::destruction::unconnected::Destructible;
+
+      pub trait DiscoErrorable {
+        type DiscoError;
+      }
+
+      pub trait Managed: Constructible + Destructible + DiscoErrorable {
+        type DiscoError: From<Self::ConstructError> + From<Self::DropError>;
+        type AuxiliaryStateAtStart: Into<Self>;
+        type AuxiliaryStateAtDrop: From<Self>;
+
+        fn managed_instance(i: Self::InitializationArguments) -> Result<Self, Self::DiscoError> {
+          Ok(Self::create_raw(i)?.into())
+        }
+
+        fn managed_drop(self) -> Result<Self::ReturnCode, Self::DiscoError> {
+          Ok(Self::destroy_raw(self.into())?)
+        }
+      }
+    }
+
+    pub mod standard {
+      use super::coherent::Managed as ParentManaged;
+
+      pub trait Managed: ParentManaged {
+        /* No transformations after the constructor or before the destructor. */
+        type AuxiliaryStateAtStart: Self;
+        type AuxiliaryStateAtDrop: Self;
+        /* The return value being void means the result of dropping the value will be (). */
+        type ReturnValue;
+      }
+    }
+
+    pub mod reciprocating {
+      use super::coherent::Managed as ParentManaged;
+
+      use std::iter::Iterator;
+
+      pub trait Managed: ParentManaged {
+        type Emit;
+        type Via: Iterator<Item = Self::Emit>;
+
+        type AuxiliaryStateAtStart: Into<Via>;
+        type AuxiliaryStateAtDrop: From<Via>;
+
+        fn managed_instance(
+          i: Self::InitializationArguments,
+        ) -> Result<Self::Via, Self::DiscoError> {
+          Ok(Self::create_raw(i)?.into())
+        }
+
+        fn managed_drop(via: Self::Via) -> Result<Self::ReturnCode, Self::DiscoError> {
+          Ok(Self::destroy_raw(self.into())?)
+        }
+      }
+    }
+  }
+
+  pub mod via_handle {
+    use super::{
+      construction::pointer_fungible::Constructible, destruction::pointer_fungible::Destructible,
+      inner::reciprocating::Managed, PointerBacked,
+    };
+
+    use crate::handle::generic::Handle;
+
+    use std::convert::{TryFrom, TryInto};
+
+    pub trait HandleBacked: PointerBacked {
+      pub type CorrespondingHandle = Handle<Self::NativeStruct>;
+    }
+    pub enum HandleStates {
+      Handle(HandleBacked::CorrespondingHandle),
+      Ptr(HandleBacked::PointerBacking),
+    }
+
+    pub trait HandleErrorable {
+      type HandleError;
+    }
+    pub trait Handled: StandardManaged + HandleErrorable {
+      /* Wrap inner errors! */
+      type DiscoError: From<Self::HandleError>;
+
+      fn managed_instance(i: Self::InitializationArguments) -> Result<Self::Via, Self::HandleError>
+      where
+        Self: Sized,
+      {
+        let ptr = unsafe { Self::create_raw(i)? };
+        let handle = Handle::new(ptr);
+        Self::Via::try_from(handle)
+      }
+
+      fn managed_drop(via: Self::Via) -> Result<Self::ReturnCode, Self::HandleError> {
+        let mut handle = Self::CorrespondingHandle::try_from(self);
+        Ok(unsafe { Self::destroy_raw(handle.deref_mut(), ()) }?)
+      }
     }
   }
 }
@@ -113,7 +244,7 @@ mod global_context {
   use std::ptr;
   use std::sync::Arc;
 
-  use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+  use super::handled::{Destructible, GetAuxiliaryState, Handled, Managed, ViaHandle};
 
   use crate::cell::{EvenMoreUnsafeCell, UnsafeAPI};
   use crate::error::{SignalError, SignalNativeResult};
@@ -129,33 +260,36 @@ mod global_context {
   };
 
   #[derive(Clone, Debug)]
-  pub struct ContextAux {
+  pub struct ContextAuxiliaryState {
     pub locker: Arc<dyn Locker>,
     pub logger: Arc<dyn Logger>,
   }
-  unsafe impl Send for ContextAux {}
-  unsafe impl Sync for ContextAux {}
+  unsafe impl Send for ContextAuxiliaryState {}
+  unsafe impl Sync for ContextAuxiliaryState {}
 
   #[derive(Clone, Debug)]
   pub struct Context {
     handle: Handle<signal_context>,
-    aux: ContextAux,
+    aux: ContextAuxiliaryState,
   }
 
-  impl GetAux<ContextAux> for Context {
-    fn get_aux(&self) -> &ContextAux {
+  impl GetAuxiliaryState<ContextAuxiliaryState> for Context {
+    fn get_aux(&self) -> &ContextAuxiliaryState {
       &self.aux
     }
   }
 
-  impl Destroyed<signal_context, ContextAux> for Context {
-    unsafe fn destroy_raw(t: *mut signal_context, _aux: &ContextAux) {
+  impl Destructible<signal_context, ContextAuxiliaryState> for Context {
+    unsafe fn destroy_raw(t: *mut signal_context, _aux: &ContextAuxiliaryState) {
       signal_context_destroy(t);
     }
   }
 
-  impl Managed<signal_context, ContextAux, (), SignalError> for Context {
-    unsafe fn create_raw(_i: (), _aux: &ContextAux) -> Result<*mut signal_context, SignalError> {
+  impl Managed<signal_context, ContextAuxiliaryState, (), SignalError> for Context {
+    unsafe fn create_raw(
+      _i: (),
+      _aux: &ContextAuxiliaryState,
+    ) -> Result<*mut signal_context, SignalError> {
       let inner: *mut *mut signal_context = ptr::null_mut();
       let user_data: *mut c_void = ptr::null_mut();
       let result: Result<*mut *mut signal_context, SignalError> =
@@ -175,13 +309,13 @@ mod global_context {
       &mut self.handle
     }
   }
-  impl ViaHandle<signal_context, ContextAux> for Context {
-    fn from_handle(handle: Handle<signal_context>, aux: ContextAux) -> Self {
+  impl ViaHandle<signal_context, ContextAuxiliaryState> for Context {
+    fn from_handle(handle: Handle<signal_context>, aux: ContextAuxiliaryState) -> Self {
       Self { handle, aux }
     }
   }
 
-  impl Handled<signal_context, ContextAux, (), SignalError> for Context {}
+  impl Handled<signal_context, ContextAuxiliaryState, (), SignalError> for Context {}
 
   impl Drop for Context {
     fn drop(&mut self) {
@@ -236,7 +370,7 @@ mod global_context {
       }
 
       pub mod c_abi_impl {
-        use crate::handle::{Context, GetAux};
+        use crate::handle::{Context, GetAuxiliaryState};
         use crate::util::get_mut_ctx;
 
         use std::os::raw::c_void;
@@ -283,7 +417,7 @@ mod global_context {
 
       pub mod c_abi_impl {
         use crate::gen::size_t as SizeType;
-        use crate::handle::{Context, GetAux};
+        use crate::handle::{Context, GetAuxiliaryState};
         use crate::internal_error::InternalError;
         use crate::log_level::LogLevel;
         use crate::util::{get_mut_ctx, signed_data::*};
@@ -350,7 +484,7 @@ mod global_context {
     pub fn new() -> Result<Self, SignalError> {
       let locker: Arc<dyn Locker> = Arc::new(DefaultLocker::new());
       let logger: Arc<dyn Logger> = Arc::new(DefaultLogger());
-      let aux = ContextAux { locker, logger };
+      let aux = ContextAuxiliaryState { locker, logger };
       let mut ret: Context = Self::handled_instance((), aux)?;
       conjoined_config::register_bundled_config(&mut ret)?;
       Ok(ret)
@@ -379,7 +513,7 @@ pub mod data_store {
   use std::ptr;
 
   use super::global_context::Context;
-  use super::handled::{Destroyed, GetAux, Handled, Managed, ViaHandle};
+  use super::handled::{Destructible, GetAuxiliaryState, Handled, Managed, ViaHandle};
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{
     signal_protocol_store_context, signal_protocol_store_context_create,
@@ -396,13 +530,13 @@ pub mod data_store {
     fn get_signal_data_store(&mut self) -> &mut DataStore;
   }
 
-  impl GetAux<()> for DataStore {
+  impl GetAuxiliaryState<()> for DataStore {
     fn get_aux(&self) -> &() {
       &()
     }
   }
 
-  impl Destroyed<signal_protocol_store_context, ()> for DataStore {
+  impl Destructible<signal_protocol_store_context, ()> for DataStore {
     unsafe fn destroy_raw(t: *mut signal_protocol_store_context, _aux: &()) {
       signal_protocol_store_context_destroy(t);
     }

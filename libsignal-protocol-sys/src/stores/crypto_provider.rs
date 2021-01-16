@@ -9,12 +9,14 @@ pub mod generic {
   use crate::error::SignalError;
 
   pub trait CryptoProvider {
+    ///
     /// Callback for a secure random number generator.
     /// This function shall fill the provided buffer with random bytes.
     ///
     /// @param data pointer to the output buffer
     /// @param len size of the output buffer
     /// @return 0 on success, negative on failure
+    ///
     fn random(&mut self, data: &mut [u8]) -> Result<(), SignalError>;
 
     ///
@@ -25,6 +27,7 @@ pub mod generic {
     /// @param key pointer to the key
     /// @param key_len length of the key
     /// @return 0 on success, negative on failure
+    ///
     fn hmac_sha256_init(&mut self, key: &[u8]) -> Result<HMACSHA256, SignalError>;
 
     ///
@@ -35,6 +38,7 @@ pub mod generic {
     /// @param data pointer to the data
     /// @param data_len length of the data
     /// @return 0 on success, negative on failure
+    ///
     fn hmac_sha256_update(
       &mut self,
       hmac_context: &mut HMACSHA256,
@@ -49,6 +53,7 @@ pub mod generic {
     /// @param hmac_context private HMAC context pointer
     /// @param output buffer to be allocated and populated with the result
     /// @return 0 on success, negative on failure
+    ///
     fn hmac_sha256_final(&mut self, hmac_context: &mut HMACSHA256) -> Result<Buffer, SignalError>;
 
     ///
@@ -57,6 +62,7 @@ pub mod generic {
     /// hmac_sha256_init.
     ///
     /// @param hmac_context private HMAC context pointer
+    ///
     fn hmac_sha256_cleanup(&mut self, hmac_context: &mut HMACSHA256);
 
     ///
@@ -65,6 +71,7 @@ pub mod generic {
     ///
     /// @param digest_context private digest context pointer
     /// @return 0 on success, negative on failure
+    ///
     fn sha512_digest_init(&mut self) -> Result<SHA512, SignalError>;
 
     ///
@@ -75,6 +82,7 @@ pub mod generic {
     /// @param data pointer to the data
     /// @param data_len length of the data
     /// @return 0 on success, negative on failure
+    ///
     fn sha512_digest_update(
       &mut self,
       digest_context: &mut SHA512,
@@ -89,6 +97,7 @@ pub mod generic {
     /// @param digest_context private digest context pointer
     /// @param output buffer to be allocated and populated with the result
     /// @return 0 on success, negative on failure
+    ///
     fn sha512_digest_final(&mut self, digest_context: &mut SHA512) -> Result<Buffer, SignalError>;
 
     ///
@@ -97,6 +106,7 @@ pub mod generic {
     /// sha512_digest_init.
     ///
     /// @param digest_context private digest context pointer
+    ///
     fn sha512_digest_cleanup(&mut self, digest_context: &mut SHA512);
 
     ///
@@ -111,6 +121,7 @@ pub mod generic {
     /// @param plaintext the plaintext to encrypt
     /// @param plaintext_len length of the plaintext
     /// @return 0 on success, negative on failure
+    ///
     fn encrypt(
       &mut self,
       cipher: CipherType,
@@ -131,6 +142,7 @@ pub mod generic {
     /// @param ciphertext the ciphertext to decrypt
     /// @param ciphertext_len length of the ciphertext
     /// @return 0 on success, negative on failure
+    ///
     fn decrypt(
       &mut self,
       cipher: CipherType,
@@ -481,7 +493,7 @@ pub mod via_native {
   use crate::error::{SignalError, SignalNativeResult};
   use crate::gen::{signal_context_set_crypto_provider, signal_crypto_provider};
   use crate::handle::{Context, WithContext};
-  use crate::stores::generics::{SeparateFromContextRegisterable, ContextRegisterable};
+  use crate::stores::generics::{ContextRegisterable, SeparateFromContextRegisterable};
 
   use std::convert::AsMut;
   use std::os::raw::c_void;
