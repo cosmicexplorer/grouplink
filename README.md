@@ -26,6 +26,8 @@ the public key was created.
 - The point is to **never rely on synchronous acknowledgements hidable UI**.
     - Instead, at all times, we represent the theoretical risk of some data having been hacked using simple to understand rules!
 
+***ALTHOUGH:* we should avoid solutions which dump the responsibiity on the user!**
+
 ## Identity Management
 ### Transitive Temper Poisioning
 Use the [let users prompt themselves](#let-users-prompt-themselves) model to warn about message tampering, according to a function calculated by the estimated "safety against fast supercomputer value of the private keys in the message and when the message was first created.
@@ -45,14 +47,9 @@ A user may post an arbitrary signed public text status to their own "wall with t
 # Minimal
 
 - [x] **Confirmed** that the Signal Protocol itself has no dependency on a phone number, just the app.
-- [ ] **TODO: WE ARE HERE** Perform a minimal enc/dec test for a buffer.
-    - [ ] Remaining stores to implement:
-        - [x] **`crypto_provider`**
-        - [x] **`session_store`**
-        - [ ] `identity_key_store`
-        - [ ] `pre_key_store`
-        - [ ] `sender_key_store`
-        - [ ] `signed_pre_key_store`
+- [x] We are now wrapping the rust signal protobuf library [^libsignal-rust].
+- [ ] Perform a minimal enc/dec test for a buffer.
+- [ ] Perform a minimal encrypted session.
     - [ ] Discuss memory motion through the stores a bit with `@ireneista` and co.
         - Try to agree on which actions/entities each corresponds to in the double-ratchet [^double-ratchet] or sesame [^sesame-paper] protocols.
 
@@ -307,6 +304,8 @@ But also, banking isn’t as important as **cryptographically auditing corporati
 [^safe-curves]: https://safecurves.cr.yp.to/
 
 [^cryptol]: https://cryptol.net/
+
+[^libsignal-rust] https://github.com/signalapp/libsignal-client
 
 <!-- Local Variables: -->
 <!-- markdown-list-indent-width: 4 -->
