@@ -149,6 +149,7 @@ Then consider (more) our approach to elliptic curve encryption:
     - if that config exists, retrieve and send the block to any number of other known ledgers (your bank, ideally)
     - Oh and your only banking identity is just a separate *ledger chat* with your bank’s public identity.
         - You should be able to stay as a completely anonymous identity, and present only a credential with secret info signed by your bank.
+- **This would be a really neat way to test traffic anonymization techniques [^some-graph-anonymization-paper],** since *it's easier to chunk money than messages*.
 
 ### Cryptographically Auditing Corporations
 But also, banking isn’t as important as **cryptographically auditing corporations**!!!! If we require corporations to produce such a blockchain of their accounting, it can be cryptographically verified at each step. This should be good for accounting folks so they can know exactly who introduced a change.
@@ -169,7 +170,7 @@ But also, banking isn’t as important as **cryptographically auditing corporati
 
 [^todo-keyserver-redundant]: TODO: does this need to use the keyserver?
 
-[^todo-thread-model-fake-keyserver]: TODO: threat model this! Do we need to worry about fake keyserver data?
+[^todo-threat-model-fake-keyserver]: TODO: threat model this! Do we need to worry about fake keyserver data?
 
 [^fake-signal-break]: https://web.archive.org/web/20201210210721/https://www.cellebrite.com/en/blog/cellebrites-new-solution-for-decrypting-the-signal-app/
 
