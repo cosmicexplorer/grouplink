@@ -154,6 +154,11 @@ Then consider (more) our approach to elliptic curve encryption:
 ### Cryptographically Auditing Corporations
 But also, banking isn’t as important as **cryptographically auditing corporations**!!!! If we require corporations to produce such a blockchain of their accounting, it can be cryptographically verified at each step. This should be good for accounting folks so they can know exactly who introduced a change.
 
+# License
+
+AGPLv3 (*not* any later version): https://www.gnu.org/licenses/agpl-3.0.html
+
+
 # Footnotes
 
 [^double-ratchet]: https://signal.org/docs/specifications/doubleratchet/

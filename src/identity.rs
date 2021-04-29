@@ -1,6 +1,9 @@
-use libsignal_protocol_sys::{buffer::{Buffer, BufferCopy, BufferSource}, liveness::Sensitivity};
+/* Copyright 2021 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* use libsignal_protocol; */
 
+#[allow(dead_code)]
 pub struct DurableSafeIdentity {
   id_key_pair: (),
 }
