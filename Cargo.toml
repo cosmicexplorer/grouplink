@@ -5,4 +5,4 @@ authors = ["cosmicexplorer"]
 edition = "2018"
 
 [dependencies]
-libsignal-protocol-rust = { path = "./libsignal-client/rust/protocol" }
+libsignal-protocol = { path = "./libsignal-client/rust/protocol" }
