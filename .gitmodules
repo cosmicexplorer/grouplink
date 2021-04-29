@@ -1,6 +1,3 @@
-[submodule "spack"]
-	path = spack
-	url = git@github.com:cosmicexplorer/spack
 [submodule "libsignal-client"]
-	path = libsignal-client
-	url = git@github.com:signalapp/libsignal-client
+        path = libsignal-client
+        url = git@github.com:cosmicexplorer/libsignal-client
