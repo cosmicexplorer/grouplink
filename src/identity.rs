@@ -1,7 +1,7 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* use libsignal_protocol; */
+/* use libsignal_protocol::address::ProtocolAddress; */
 
 #[allow(dead_code)]
 pub struct DurableSafeIdentity {

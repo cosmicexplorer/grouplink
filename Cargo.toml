@@ -1,8 +1,8 @@
 [package]
 name = "grouplink"
 version = "0.1.0"
-authors = ["cosmicexplorer"]
+authors = ["Danny McClanahan"]
 edition = "2018"
 
 [dependencies]
-libsignal-protocol = { path = "./libsignal-client/rust/protocol" }
+libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "377713b704a7030a7d43491732db5245b2b6e3cc" }
