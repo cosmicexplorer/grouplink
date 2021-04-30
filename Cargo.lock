@@ -252,6 +252,7 @@ name = "grouplink"
 version = "0.1.0"
 dependencies = [
  "libsignal-protocol",
+ "rand 0.7.3",
 ]
 
 [[package]]
@@ -322,7 +323,7 @@ checksum = "89203f3fba0a3795506acaad8ebce3c80c0af93f994d5a1d7a0b1eeb23271929"
 [[package]]
 name = "libsignal-protocol"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=377713b704a7030a7d43491732db5245b2b6e3cc#377713b704a7030a7d43491732db5245b2b6e3cc"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=627fa8e069cf47682ed9c6975b0182078f2e4952#627fa8e069cf47682ed9c6975b0182078f2e4952"
 dependencies = [
  "aes",
  "arrayref",
@@ -340,6 +341,7 @@ dependencies = [
  "rand 0.7.3",
  "sha2",
  "signal-crypto",
+ "static_assertions",
  "subtle",
  "uuid",
  "x25519-dalek",
@@ -681,7 +683,7 @@ dependencies = [
 [[package]]
 name = "signal-crypto"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=377713b704a7030a7d43491732db5245b2b6e3cc#377713b704a7030a7d43491732db5245b2b6e3cc"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=627fa8e069cf47682ed9c6975b0182078f2e4952#627fa8e069cf47682ed9c6975b0182078f2e4952"
 dependencies = [
  "aes-soft",
  "aesni",
@@ -701,6 +703,12 @@ name = "smallvec"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "subtle"

@@ -30,15 +30,18 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
-use std::io;
+use libsignal_protocol::{IdentityKeyPair, Serializable};
+use rand::rngs::OsRng;
 
-mod identity;
+use std::{convert::TryFrom, io};
 
 pub fn main() -> io::Result<()> {
-  /* let g = identity::GroupFungible::new(); */
-  /* let buf: &[u8] = g.buf.as_ref(); */
-  /* println!("ok: {}", std::str::from_utf8(buf).unwrap()); */
-  eprintln!("OOPS WE COMMENTED OUT ANY CHANGES IN MAIN.RS WHOOPSIES!!!");
+  let id = IdentityKeyPair::generate(&mut OsRng);
+  println!("init: {:?}", &id);
+  let buf = id.serialize();
+  println!("serialized: {:?}", &buf);
+  let orig_id = IdentityKeyPair::try_from(buf.as_ref());
+  println!("deserialized: {:?}", orig_id);
   Ok(())
 }
 
