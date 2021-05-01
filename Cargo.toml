@@ -5,5 +5,10 @@ authors = ["Danny McClanahan"]
 edition = "2018"
 
 [dependencies]
-libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "abecef293f11835c285686f62baf038f8d89ba07" }
+libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "8ec8cb80881579170e9bedc2e1fcb041fe6d2d24" }
 rand = "0.7.3"
+prost = "0.7"
+bytes = "1"
+
+[build-dependencies]
+prost-build = "0.7"

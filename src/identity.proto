@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+/* Copyright 2021 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+package grouplink.proto.identity;
+
+message Address {
+  optional string name = 1;
+  optional uint32 device_id = 2;
+}
+
+message Identity {
+  optional bytes signal_key_pair = 1;
+  optional Address address = 2;
+}

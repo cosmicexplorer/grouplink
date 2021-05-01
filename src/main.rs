@@ -13,9 +13,7 @@
   clippy::if_not_else,
   clippy::needless_continue,
   clippy::unseparated_literal_suffix,
-  /* TODO: Falsely triggers for async/await:
-   *   see https://github.com/rust-lang/rust-clippy/issues/5360 */
-  /* clippy::used_underscore_binding */
+  clippy::used_underscore_binding
 )]
 /* It is often more clear to show that nothing is being moved. */
 #![allow(clippy::match_ref_pats)]
@@ -30,30 +28,11 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
+mod error;
+mod identity;
+
 use std::io;
 
 pub fn main() -> io::Result<()> {
   Ok(())
-}
-
-#[cfg(test)]
-mod test {
-  use libsignal_protocol::{IdentityKeyPair, Serializable};
-  use rand::rngs::OsRng;
-
-  use std::{convert::TryFrom, io};
-
-  #[test]
-  fn re_serialize_identity_pair() -> io::Result<()> {
-    let id = IdentityKeyPair::generate(&mut OsRng);
-    println!("init: {:?}", &id);
-    let buf = id.serialize();
-    println!("serialized: {:?}", &buf);
-    let orig_id = IdentityKeyPair::try_from(buf.as_ref())
-      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", e)))?;
-    println!("deserialized: {:?}", orig_id);
-    assert_eq!(id, orig_id);
-    assert_eq!(id.public_key(), &id.private_key().public_key());
-    Ok(())
-  }
 }
