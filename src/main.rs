@@ -30,27 +30,30 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
-use libsignal_protocol::{IdentityKeyPair, Serializable};
-use rand::rngs::OsRng;
-
-use std::{convert::TryFrom, io};
+use std::io;
 
 pub fn main() -> io::Result<()> {
-  let id = IdentityKeyPair::generate(&mut OsRng);
-  println!("init: {:?}", &id);
-  let buf = id.serialize();
-  println!("serialized: {:?}", &buf);
-  let orig_id = IdentityKeyPair::try_from(buf.as_ref());
-  println!("deserialized: {:?}", orig_id);
   Ok(())
 }
 
 #[cfg(test)]
 mod test {
-  use std::io;
+  use libsignal_protocol::{IdentityKeyPair, Serializable};
+  use rand::rngs::OsRng;
+
+  use std::{convert::TryFrom, io};
 
   #[test]
-  fn test_something() -> io::Result<()> {
+  fn re_serialize_identity_pair() -> io::Result<()> {
+    let id = IdentityKeyPair::generate(&mut OsRng);
+    println!("init: {:?}", &id);
+    let buf = id.serialize();
+    println!("serialized: {:?}", &buf);
+    let orig_id = IdentityKeyPair::try_from(buf.as_ref())
+      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", e)))?;
+    println!("deserialized: {:?}", orig_id);
+    assert_eq!(id, orig_id);
+    assert_eq!(id.public_key(), &id.private_key().public_key());
     Ok(())
   }
 }
