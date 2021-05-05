@@ -1,14 +1,17 @@
 [package]
 name = "grouplink"
 version = "0.1.0"
-authors = ["Danny McClanahan"]
+authors = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 edition = "2018"
+license = "AGPL-3.0-only"
 
 [dependencies]
-libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "8ec8cb80881579170e9bedc2e1fcb041fe6d2d24" }
-rand = "0.7.3"
+libc = "0.2.94"
+libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "655048c3ed6874a940342569784b705ee76b63cb" }
+rand = "0.7"
 prost = "0.7"
 bytes = "1"
+uuid = "0.8"
 
 [build-dependencies]
 prost-build = "0.7"

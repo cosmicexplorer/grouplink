@@ -28,11 +28,5 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
-mod error;
-mod identity;
-
-use std::io;
-
-pub fn main() -> io::Result<()> {
-  Ok(())
-}
+pub mod error;
+pub mod identity;

@@ -8,10 +8,10 @@ pub mod proto {
 }
 
 pub use libsignal_protocol as signal;
-use libsignal_protocol::{Deserializable, Serializable};
 use prost::Message;
 pub use rand;
 use rand::{CryptoRng, Rng};
+use uuid::Uuid;
 
 use std::{
   convert::{AsRef, From, TryFrom},
@@ -20,7 +20,7 @@ use std::{
 
 use crate::error::Error;
 
-pub(crate) trait AnonymouslyGenerable<Params> {
+pub trait SpontaneouslyGenerable<Params> {
   fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
 }
 
@@ -39,7 +39,7 @@ impl CryptographicIdentity {
   }
 }
 
-impl AnonymouslyGenerable<()> for CryptographicIdentity {
+impl SpontaneouslyGenerable<()> for CryptographicIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     Self::new(signal::IdentityKeyPair::generate(csprng))
   }
@@ -63,9 +63,13 @@ impl From<signal::IdentityKeyPair> for CryptographicIdentity {
   }
 }
 
+fn no_encoding_error(r: Result<(), prost::EncodeError>) -> () {
+  r.expect("expect encoding into a vec to never fail")
+}
+
 fn encode_proto_message<M: Message>(m: M) -> Box<[u8]> {
   let mut serialized = Vec::<u8>::with_capacity(m.encoded_len());
-  signal::unwrap::no_encoding_error(m.encode(&mut &mut serialized));
+  no_encoding_error(m.encode(&mut &mut serialized));
   serialized.into_boxed_slice()
 }
 
@@ -103,7 +107,7 @@ impl From<ExternalIdentity> for proto::Address {
     let address: signal::ProtocolAddress = value.into();
     proto::Address {
       name: Some(address.name().to_string()),
-      device_id: Some(address.device_id()),
+      device_id: Some(address.device_id().into()),
     }
   }
 }
@@ -116,7 +120,8 @@ impl TryFrom<proto::Address> for ExternalIdentity {
       .ok_or_else(|| Error::ProtobufDecodingError(format!("failed to find `name` field!")))?;
     let device_id: signal::DeviceId = proto_message
       .device_id
-      .ok_or_else(|| Error::ProtobufDecodingError(format!("failed to find `device_id` field!")))?;
+      .ok_or_else(|| Error::ProtobufDecodingError(format!("failed to find `device_id` field!")))?
+      .into();
     Ok(Self { name, device_id })
   }
 }
@@ -136,38 +141,48 @@ impl TryFrom<&[u8]> for ExternalIdentity {
   }
 }
 
-/// ???
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct AnonymousIdentityParams {
-  pub name_length: usize,
-}
-
-impl AnonymouslyGenerable<AnonymousIdentityParams> for ExternalIdentity {
-  fn generate<R: CryptoRng + Rng>(params: AnonymousIdentityParams, csprng: &mut R) -> Self {
-    let AnonymousIdentityParams { name_length } = params;
-    let random_name: String = rand::thread_rng()
-      .sample_iter::<char, _>(rand::distributions::Alphanumeric)
-      .take(name_length)
-      .collect();
-    let random_device: signal::DeviceId = csprng.gen::<signal::DeviceId>();
+impl SpontaneouslyGenerable<()> for ExternalIdentity {
+  fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
+    let random_bytes: [u8; 16] = csprng.gen();
+    let random_uuid: Uuid = Uuid::from_bytes(random_bytes);
+    let random_device: signal::DeviceId = csprng.gen::<u32>().into();
     Self {
-      name: random_name,
+      name: random_uuid.to_string(),
       device_id: random_device,
     }
   }
 }
 
 /// ???
+///
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::identity::{Identity, SpontaneouslyGenerable};
+/// use rand;
+/// use std::convert::TryFrom;
+///
+/// // Create a new identity.
+/// let id = Identity::generate((), &mut rand::thread_rng());
+///
+/// // Serialize the identity.
+/// let buf: Box<[u8]> = id.clone().into();
+/// // Deserialize the identity.
+/// let resurrected = Identity::try_from(buf.as_ref())?;
+///
+/// assert!(id == resurrected);
+/// # Ok(())
+/// # }
+///```
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Identity {
   pub(crate) crypto: CryptographicIdentity,
   pub(crate) external: ExternalIdentity,
 }
 
-impl AnonymouslyGenerable<AnonymousIdentityParams> for Identity {
-  fn generate<R: CryptoRng + Rng>(params: AnonymousIdentityParams, csprng: &mut R) -> Self {
+impl SpontaneouslyGenerable<()> for Identity {
+  fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     let crypto = CryptographicIdentity::generate((), csprng);
-    let external = ExternalIdentity::generate(params, csprng);
+    let external = ExternalIdentity::generate((), csprng);
     Self { crypto, external }
   }
 }
@@ -191,7 +206,7 @@ impl TryFrom<proto::Identity> for Identity {
       Error::ProtobufDecodingError(format!("failed to find `signal_key_pair` field!"))
     })?;
     eprintln!("2");
-    let decoded_key_pair = signal::IdentityKeyPair::deserialize(&encoded_key_pair)?;
+    let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
     eprintln!("3");
     let address: proto::Address = proto_message.address.ok_or_else(|| {
       Error::ProtobufDecodingError(format!("failed to find `signal_address` field!"))
@@ -224,30 +239,5 @@ impl From<Identity> for Box<[u8]> {
 impl fmt::Display for Identity {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "Identity {{ external={}, crypto=<...> }}", self.external)
-  }
-}
-
-#[cfg(test)]
-mod test {
-  use rand::rngs::OsRng;
-
-  use super::*;
-
-  #[test]
-  fn address_name_length_bound() {
-    let name_length = 35;
-    let addr_params = AnonymousIdentityParams { name_length };
-    let id = Identity::generate(addr_params, &mut OsRng);
-    let address: signal::ProtocolAddress = id.external.into();
-    assert_eq!(address.name().len(), name_length);
-  }
-
-  #[test]
-  fn reserialization() {
-    let id = Identity::generate(AnonymousIdentityParams { name_length: 34 }, &mut OsRng);
-    let buf: Box<[u8]> = id.clone().into();
-    eprintln!("asdf: {:?}", &buf);
-    let orig_id = Identity::try_from(buf.as_ref()).unwrap();
-    assert_eq!(id, orig_id);
   }
 }

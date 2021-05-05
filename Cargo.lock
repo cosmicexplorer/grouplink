@@ -252,10 +252,12 @@ name = "grouplink"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "libc",
  "libsignal-protocol",
  "prost",
  "prost-build",
  "rand 0.7.3",
+ "uuid",
 ]
 
 [[package]]
@@ -300,15 +302,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "instant"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61124eeebbd69b8190558df225adf7e4caafce0d743919e5d6b19652314ec5ec"
-dependencies = [
- "cfg-if 1.0.0",
-]
-
-[[package]]
 name = "itertools"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,14 +312,14 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.82"
+version = "0.2.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89203f3fba0a3795506acaad8ebce3c80c0af93f994d5a1d7a0b1eeb23271929"
+checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 
 [[package]]
 name = "libsignal-protocol"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=8ec8cb80881579170e9bedc2e1fcb041fe6d2d24#8ec8cb80881579170e9bedc2e1fcb041fe6d2d24"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=655048c3ed6874a940342569784b705ee76b63cb#655048c3ed6874a940342569784b705ee76b63cb"
 dependencies = [
  "aes",
  "arrayref",
@@ -338,25 +331,14 @@ dependencies = [
  "hmac",
  "log",
  "num_enum",
- "parking_lot",
  "prost",
  "prost-build",
  "rand 0.7.3",
  "sha2",
  "signal-crypto",
- "static_assertions",
  "subtle",
  "uuid",
  "x25519-dalek",
-]
-
-[[package]]
-name = "lock_api"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a3c91c24eae6777794bb1997ad98bbb87daf92890acab859f7eaa4320333176"
-dependencies = [
- "scopeguard",
 ]
 
 [[package]]
@@ -401,31 +383,6 @@ name = "opaque-debug"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
-
-[[package]]
-name = "parking_lot"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d7744ac029df22dca6284efe4e898991d28e3085c706c972bcd7da4a27a15eb"
-dependencies = [
- "instant",
- "lock_api",
- "parking_lot_core",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa7a782938e745763fe6907fc6ba86946d72f49fe7e21de074e08128a99fb018"
-dependencies = [
- "cfg-if 1.0.0",
- "instant",
- "libc",
- "redox_syscall",
- "smallvec",
- "winapi",
-]
 
 [[package]]
 name = "petgraph"
@@ -632,12 +589,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scopeguard"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
-
-[[package]]
 name = "serde"
 version = "1.0.125"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -686,7 +637,7 @@ dependencies = [
 [[package]]
 name = "signal-crypto"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=8ec8cb80881579170e9bedc2e1fcb041fe6d2d24#8ec8cb80881579170e9bedc2e1fcb041fe6d2d24"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=655048c3ed6874a940342569784b705ee76b63cb#655048c3ed6874a940342569784b705ee76b63cb"
 dependencies = [
  "aes-soft",
  "aesni",
@@ -700,18 +651,6 @@ dependencies = [
  "sha2",
  "subtle",
 ]
-
-[[package]]
-name = "smallvec"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "subtle"
