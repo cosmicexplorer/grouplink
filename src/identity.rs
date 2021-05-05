@@ -20,12 +20,12 @@ use std::{
 
 use crate::error::{Error, ProtobufCodingFailure};
 
-pub trait SpontaneouslyGenerable<Params> {
+pub trait Spontaneous<Params> {
   fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub(crate) struct CryptographicIdentity {
+pub struct CryptographicIdentity {
   inner: signal::IdentityKeyPair,
 }
 
@@ -39,7 +39,7 @@ impl CryptographicIdentity {
   }
 }
 
-impl SpontaneouslyGenerable<()> for CryptographicIdentity {
+impl Spontaneous<()> for CryptographicIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     Self::new(signal::IdentityKeyPair::generate(csprng))
   }
@@ -74,7 +74,7 @@ fn encode_proto_message<M: Message>(m: M) -> Box<[u8]> {
 }
 
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
-pub(crate) struct ExternalIdentity {
+pub struct ExternalIdentity {
   pub name: String,
   pub device_id: signal::DeviceId,
 }
@@ -147,7 +147,7 @@ impl TryFrom<&[u8]> for ExternalIdentity {
   }
 }
 
-impl SpontaneouslyGenerable<()> for ExternalIdentity {
+impl Spontaneous<()> for ExternalIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     let random_bytes: [u8; 16] = csprng.gen();
     let random_uuid: Uuid = Uuid::from_bytes(random_bytes);
@@ -163,12 +163,14 @@ impl SpontaneouslyGenerable<()> for ExternalIdentity {
 ///
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::identity::{Identity, SpontaneouslyGenerable};
+/// use grouplink::identity::{Identity, ExternalIdentity, CryptographicIdentity, Spontaneous};
 /// use rand;
 /// use std::convert::TryFrom;
 ///
 /// // Create a new identity.
-/// let id = Identity::generate((), &mut rand::thread_rng());
+/// let crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let external = ExternalIdentity::generate((), &mut rand::thread_rng());
+/// let id = Identity { crypto, external };
 ///
 /// // Serialize the identity.
 /// let buf: Box<[u8]> = id.clone().into();
@@ -181,16 +183,8 @@ impl SpontaneouslyGenerable<()> for ExternalIdentity {
 ///```
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Identity {
-  pub(crate) crypto: CryptographicIdentity,
-  pub(crate) external: ExternalIdentity,
-}
-
-impl SpontaneouslyGenerable<()> for Identity {
-  fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
-    let crypto = CryptographicIdentity::generate((), csprng);
-    let external = ExternalIdentity::generate((), csprng);
-    Self { crypto, external }
-  }
+  pub crypto: CryptographicIdentity,
+  pub external: ExternalIdentity,
 }
 
 impl From<Identity> for proto::Identity {
