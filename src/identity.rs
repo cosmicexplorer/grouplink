@@ -201,17 +201,13 @@ impl From<Identity> for proto::Identity {
 impl TryFrom<proto::Identity> for Identity {
   type Error = Error;
   fn try_from(proto_message: proto::Identity) -> Result<Self, Error> {
-    eprintln!("1");
     let encoded_key_pair: Vec<u8> = proto_message.signal_key_pair.ok_or_else(|| {
       Error::ProtobufDecodingError(format!("failed to find `signal_key_pair` field!"))
     })?;
-    eprintln!("2");
     let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
-    eprintln!("3");
     let address: proto::Address = proto_message.address.ok_or_else(|| {
       Error::ProtobufDecodingError(format!("failed to find `signal_address` field!"))
     })?;
-    eprintln!("4");
     Ok(Self {
       crypto: CryptographicIdentity::new(decoded_key_pair),
       external: ExternalIdentity::try_from(address)?,
@@ -229,9 +225,7 @@ impl TryFrom<&[u8]> for Identity {
 
 impl From<Identity> for Box<[u8]> {
   fn from(value: Identity) -> Box<[u8]> {
-    eprintln!("6: {:?}", &value);
     let proto_message: proto::Identity = value.into();
-    eprintln!("7: {:?}", &proto_message);
     encode_proto_message(proto_message)
   }
 }
