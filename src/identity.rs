@@ -129,6 +129,7 @@ impl From<CryptographicIdentity> for Box<[u8]> {
 /// let bob_address: ProtocolAddress = bob.external.clone().into();
 /// let mut bob_store = Store::new(bob.crypto);
 ///
+/// // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 /// let bob_pre_key_pair = CryptographicIdentity::generate((), &mut rand::thread_rng());
 /// let bob_signed_pre_key_pair = CryptographicIdentity::generate((), &mut rand::thread_rng());
 /// let bob_pub_signed_prekey: Box<[u8]> = bob_signed_pre_key_pair.inner.public_key().serialize();
@@ -154,28 +155,6 @@ impl From<CryptographicIdentity> for Box<[u8]> {
 ///                                &mut rand::thread_rng(),
 ///                                None,
 /// ))?;
-///
-/// // Create a server identity.
-/// let trust_root = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let server_identity = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let server_id: u32 = Box::new(&mut rand::thread_rng()).gen();
-/// let server_cert = ServerCertificate::new(
-///    server_id, *server_identity.inner.public_key(), trust_root.inner.private_key(),
-///    &mut rand::thread_rng(),
-/// )?;
-///
-/// // Create a sender identity.
-/// let sender_uuid_bytes: [u8; 16] = Box::new(&mut rand::thread_rng()).gen();
-/// let sender_uuid = Uuid::from_bytes(sender_uuid_bytes);
-/// let sender_cert = SenderCertificate::new(
-///   sender_uuid.to_string(), None,
-///   *bob.crypto.inner.public_key(),
-///   external.device_id,
-///   0_u64,
-///   server_cert,
-///   alice.crypto.inner.private_key(),
-///   &mut rand::thread_rng(),
-/// )?;
 ///
 /// // Encrypt a sealed-sender message.
 /// let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
