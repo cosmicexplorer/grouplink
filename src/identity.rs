@@ -26,40 +26,15 @@ pub trait Spontaneous<Params> {
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct CryptographicIdentity {
-  inner: signal::IdentityKeyPair,
-}
-
-impl CryptographicIdentity {
-  pub fn new(inner: signal::IdentityKeyPair) -> Self {
-    Self { inner }
-  }
-
-  pub fn into_inner(self) -> signal::IdentityKeyPair {
-    self.inner
-  }
+  pub inner: signal::IdentityKeyPair,
+  pub seed: signal::SessionSeed,
 }
 
 impl Spontaneous<()> for CryptographicIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
-    Self::new(signal::IdentityKeyPair::generate(csprng))
-  }
-}
-
-impl AsRef<signal::IdentityKeyPair> for CryptographicIdentity {
-  fn as_ref(&self) -> &signal::IdentityKeyPair {
-    &self.inner
-  }
-}
-
-impl From<CryptographicIdentity> for signal::IdentityKeyPair {
-  fn from(value: CryptographicIdentity) -> signal::IdentityKeyPair {
-    value.into_inner()
-  }
-}
-
-impl From<signal::IdentityKeyPair> for CryptographicIdentity {
-  fn from(value: signal::IdentityKeyPair) -> Self {
-    Self::new(value)
+    let inner = signal::IdentityKeyPair::generate(csprng);
+    let seed: signal::SessionSeed = csprng.gen::<u32>().into();
+    Self { inner, seed }
   }
 }
 
@@ -71,6 +46,132 @@ fn encode_proto_message<M: Message>(m: M) -> Box<[u8]> {
   let mut serialized = Vec::<u8>::with_capacity(m.encoded_len());
   no_encoding_error(m.encode(&mut &mut serialized));
   serialized.into_boxed_slice()
+}
+
+impl From<CryptographicIdentity> for proto::CryptographicIdentity {
+  fn from(value: CryptographicIdentity) -> proto::CryptographicIdentity {
+    let CryptographicIdentity { inner, seed } = value;
+    proto::CryptographicIdentity {
+      signal_key_pair: Some(inner.serialize().into_vec()),
+      seed: Some(seed.into()),
+    }
+  }
+}
+
+impl TryFrom<proto::CryptographicIdentity> for CryptographicIdentity {
+  type Error = Error;
+  fn try_from(value: proto::CryptographicIdentity) -> Result<Self, Error> {
+    let proto::CryptographicIdentity {
+      signal_key_pair,
+      seed,
+    } = value;
+    let encoded_key_pair: Vec<u8> = signal_key_pair.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `signal_key_pair` field!"
+      )))
+    })?;
+    let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
+    let seed: signal::SessionSeed = seed
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `seed` field!"
+        )))
+      })?
+      .into();
+    Ok(Self {
+      inner: decoded_key_pair,
+      seed,
+    })
+  }
+}
+
+impl TryFrom<&[u8]> for CryptographicIdentity {
+  type Error = Error;
+  fn try_from(value: &[u8]) -> Result<Self, Error> {
+    let proto_message = proto::CryptographicIdentity::decode(value)?;
+    Self::try_from(proto_message)
+  }
+}
+
+impl From<CryptographicIdentity> for Box<[u8]> {
+  fn from(value: CryptographicIdentity) -> Box<[u8]> {
+    let proto_message: proto::CryptographicIdentity = value.into();
+    encode_proto_message(proto_message)
+  }
+}
+
+/// ???
+///
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::identity::*;
+/// use libsignal_protocol as signal;
+/// use rand::{self, Rng};
+/// use uuid::Uuid;
+/// use futures::executor::block_on;
+/// use std::convert::TryFrom;
+///
+/// // Create a new identity.
+/// let crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let external = ExternalIdentity::generate((), &mut rand::thread_rng());
+/// let id = Identity { crypto, external: external.clone() };
+///
+/// // Create a mutable store.
+/// let mut store = Store::new(crypto);
+///
+/// // Create a destination identity.
+/// let dest_crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let dest_ext = ExternalIdentity::generate((), &mut rand::thread_rng());
+/// let dest = Identity { crypto: dest_crypto, external: dest_ext };
+///
+/// // Create a server identity.
+/// let trust_root = signal::IdentityKeyPair::generate(&mut rand::thread_rng());
+/// let server_identity = signal::IdentityKeyPair::generate(&mut rand::thread_rng());
+/// let server_id: u32 = Box::new(&mut rand::thread_rng()).gen();
+/// let server_cert = signal::ServerCertificate::new(
+///    server_id, *server_identity.public_key(), trust_root.private_key(), &mut rand::thread_rng(),
+/// )?;
+///
+/// // Create a sender identity.
+/// let sender_uuid_bytes: [u8; 16] = Box::new(&mut rand::thread_rng()).gen();
+/// let sender_uuid = Uuid::from_bytes(sender_uuid_bytes);
+/// let sender_cert = signal::SenderCertificate::new(
+///   sender_uuid.to_string(), None,
+///   *dest.crypto.inner.public_key(),
+///   external.device_id,
+///   0_u64,
+///   server_cert,
+///   id.crypto.inner.private_key(),
+///   &mut rand::thread_rng(),
+/// )?;
+///
+/// // Encrypt a sealed-sender message.
+/// let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
+/// let encrypted_message: Vec<u8> = block_on(signal::sealed_sender_encrypt(
+///   &dest.external.clone().into(),
+///   &sender_cert, ptext.as_ref(),
+///   &mut store.0.session_store, &mut store.0.identity_store,
+///   None,
+///   &mut rand::thread_rng(),
+/// ))?;
+/// assert!(encrypted_message.len() > 0);
+/// # Ok(())
+/// # }
+///```
+#[derive(Clone)]
+pub struct Store(pub signal::InMemSignalProtocolStore);
+
+fn no_store_creation_error<T>(r: Result<T, signal::SignalProtocolError>) -> T {
+  r.expect("creation of the in-memory signal protocol store should succeed")
+}
+
+impl Store {
+  pub fn new(crypto: CryptographicIdentity) -> Self {
+    let CryptographicIdentity { inner, seed } = crypto;
+    Self(no_store_creation_error(
+      signal::InMemSignalProtocolStore::new(inner, seed),
+    ))
+  }
 }
 
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
@@ -115,13 +216,13 @@ impl From<ExternalIdentity> for proto::Address {
 impl TryFrom<proto::Address> for ExternalIdentity {
   type Error = Error;
   fn try_from(proto_message: proto::Address) -> Result<Self, Error> {
-    let name = proto_message.name.ok_or_else(|| {
+    let proto::Address { name, device_id } = proto_message;
+    let name = name.ok_or_else(|| {
       Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
         "failed to find `name` field!"
       )))
     })?;
-    let device_id: signal::DeviceId = proto_message
-      .device_id
+    let device_id: signal::DeviceId = device_id
       .ok_or_else(|| {
         Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
           "failed to find `device_id` field!"
@@ -190,9 +291,8 @@ pub struct Identity {
 impl From<Identity> for proto::Identity {
   fn from(value: Identity) -> Self {
     let Identity { crypto, external } = value;
-    let signal_key: signal::IdentityKeyPair = crypto.into();
     proto::Identity {
-      signal_key_pair: Some(signal_key.serialize().into_vec()),
+      key_pair: Some(crypto.into()),
       address: Some(proto::Address::from(external)),
     }
   }
@@ -201,19 +301,19 @@ impl From<Identity> for proto::Identity {
 impl TryFrom<proto::Identity> for Identity {
   type Error = Error;
   fn try_from(proto_message: proto::Identity) -> Result<Self, Error> {
-    let encoded_key_pair: Vec<u8> = proto_message.signal_key_pair.ok_or_else(|| {
+    let proto::Identity { key_pair, address } = proto_message;
+    let key_pair: proto::CryptographicIdentity = key_pair.ok_or_else(|| {
       Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `signal_key_pair` field!"
+        "failed to find `key_pair` field!"
       )))
     })?;
-    let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
-    let address: proto::Address = proto_message.address.ok_or_else(|| {
+    let address: proto::Address = address.ok_or_else(|| {
       Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
         "failed to find `signal_address` field!"
       )))
     })?;
     Ok(Self {
-      crypto: CryptographicIdentity::from(decoded_key_pair),
+      crypto: CryptographicIdentity::try_from(key_pair)?,
       external: ExternalIdentity::try_from(address)?,
     })
   }

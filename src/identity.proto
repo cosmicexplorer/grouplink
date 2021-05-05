@@ -10,7 +10,12 @@ message Address {
   optional uint32 device_id = 2;
 }
 
-message Identity {
+message CryptographicIdentity {
   optional bytes signal_key_pair = 1;
+  optional uint32 seed = 2;
+}
+
+message Identity {
+  optional CryptographicIdentity key_pair = 1;
   optional Address address = 2;
 }
