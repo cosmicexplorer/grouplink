@@ -18,7 +18,7 @@ use std::{
   fmt,
 };
 
-use crate::error::Error;
+use crate::error::{Error, ProtobufCodingFailure};
 
 pub trait SpontaneouslyGenerable<Params> {
   fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
@@ -115,12 +115,18 @@ impl From<ExternalIdentity> for proto::Address {
 impl TryFrom<proto::Address> for ExternalIdentity {
   type Error = Error;
   fn try_from(proto_message: proto::Address) -> Result<Self, Error> {
-    let name = proto_message
-      .name
-      .ok_or_else(|| Error::ProtobufDecodingError(format!("failed to find `name` field!")))?;
+    let name = proto_message.name.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `name` field!"
+      )))
+    })?;
     let device_id: signal::DeviceId = proto_message
       .device_id
-      .ok_or_else(|| Error::ProtobufDecodingError(format!("failed to find `device_id` field!")))?
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `device_id` field!"
+        )))
+      })?
       .into();
     Ok(Self { name, device_id })
   }
@@ -202,14 +208,18 @@ impl TryFrom<proto::Identity> for Identity {
   type Error = Error;
   fn try_from(proto_message: proto::Identity) -> Result<Self, Error> {
     let encoded_key_pair: Vec<u8> = proto_message.signal_key_pair.ok_or_else(|| {
-      Error::ProtobufDecodingError(format!("failed to find `signal_key_pair` field!"))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `signal_key_pair` field!"
+      )))
     })?;
     let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
     let address: proto::Address = proto_message.address.ok_or_else(|| {
-      Error::ProtobufDecodingError(format!("failed to find `signal_address` field!"))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `signal_address` field!"
+      )))
     })?;
     Ok(Self {
-      crypto: CryptographicIdentity::new(decoded_key_pair),
+      crypto: CryptographicIdentity::from(decoded_key_pair),
       external: ExternalIdentity::try_from(address)?,
     })
   }
