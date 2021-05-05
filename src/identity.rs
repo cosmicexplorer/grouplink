@@ -105,56 +105,137 @@ impl From<CryptographicIdentity> for Box<[u8]> {
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
 /// use grouplink::identity::*;
-/// use libsignal_protocol as signal;
+/// use libsignal_protocol::*;
 /// use rand::{self, Rng};
 /// use uuid::Uuid;
 /// use futures::executor::block_on;
-/// use std::convert::TryFrom;
+/// use std::convert::{TryFrom, TryInto};
+/// use std::default::Default;
+/// use std::time::{Duration, SystemTime};
 ///
 /// // Create a new identity.
 /// let crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
 /// let external = ExternalIdentity::generate((), &mut rand::thread_rng());
-/// let id = Identity { crypto, external: external.clone() };
+/// let alice = Identity { crypto, external: external.clone() };
+/// let alice_address: ProtocolAddress = alice.external.clone().into();
 ///
 /// // Create a mutable store.
-/// let mut store = Store::new(crypto);
+/// let mut alice_store = Store::new(alice.crypto);
 ///
 /// // Create a destination identity.
-/// let dest_crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let dest_ext = ExternalIdentity::generate((), &mut rand::thread_rng());
-/// let dest = Identity { crypto: dest_crypto, external: dest_ext };
+/// let bob_crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let bob_ext = ExternalIdentity::generate((), &mut rand::thread_rng());
+/// let bob = Identity { crypto: bob_crypto, external: bob_ext };
+/// let bob_address: ProtocolAddress = bob.external.clone().into();
+/// let mut bob_store = Store::new(bob.crypto);
+///
+/// let bob_pre_key_pair = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let bob_signed_pre_key_pair = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let bob_pub_signed_prekey: Box<[u8]> = bob_signed_pre_key_pair.inner.public_key().serialize();
+/// let bob_pub_sign = block_on(bob_store.0.get_identity_key_pair(None))?
+///                      .private_key()
+///                      .calculate_signature(&bob_pub_signed_prekey, &mut rand::thread_rng())?;
+///
+/// let pre_key_id: PreKeyId = Box::new(&mut rand::thread_rng()).gen::<u32>().into();
+/// let signed_pre_key_id: SignedPreKeyId = Box::new(&mut rand::thread_rng()).gen::<u32>().into();
+/// let bob_pre_key_bundle = PreKeyBundle::new(
+///   block_on(bob_store.0.get_local_registration_id(None))?.into(),
+///   bob.external.device_id.into(),
+///   Some((pre_key_id.into(), *bob_pre_key_pair.inner.public_key())),
+///   signed_pre_key_id.into(),
+///   *bob_signed_pre_key_pair.inner.public_key(),
+///   bob_pub_sign.to_vec(),
+///   *block_on(bob_store.0.get_identity_key_pair(None))?.identity_key(),
+/// )?;
+/// block_on(process_prekey_bundle(&bob_address,
+///                                &mut alice_store.0.session_store,
+///                                &mut alice_store.0.identity_store,
+///                                &bob_pre_key_bundle,
+///                                &mut rand::thread_rng(),
+///                                None,
+/// ))?;
 ///
 /// // Create a server identity.
-/// let trust_root = signal::IdentityKeyPair::generate(&mut rand::thread_rng());
-/// let server_identity = signal::IdentityKeyPair::generate(&mut rand::thread_rng());
+/// let trust_root = CryptographicIdentity::generate((), &mut rand::thread_rng());
+/// let server_identity = CryptographicIdentity::generate((), &mut rand::thread_rng());
 /// let server_id: u32 = Box::new(&mut rand::thread_rng()).gen();
-/// let server_cert = signal::ServerCertificate::new(
-///    server_id, *server_identity.public_key(), trust_root.private_key(), &mut rand::thread_rng(),
+/// let server_cert = ServerCertificate::new(
+///    server_id, *server_identity.inner.public_key(), trust_root.inner.private_key(),
+///    &mut rand::thread_rng(),
 /// )?;
 ///
 /// // Create a sender identity.
 /// let sender_uuid_bytes: [u8; 16] = Box::new(&mut rand::thread_rng()).gen();
 /// let sender_uuid = Uuid::from_bytes(sender_uuid_bytes);
-/// let sender_cert = signal::SenderCertificate::new(
+/// let sender_cert = SenderCertificate::new(
 ///   sender_uuid.to_string(), None,
-///   *dest.crypto.inner.public_key(),
+///   *bob.crypto.inner.public_key(),
 ///   external.device_id,
 ///   0_u64,
 ///   server_cert,
-///   id.crypto.inner.private_key(),
+///   alice.crypto.inner.private_key(),
 ///   &mut rand::thread_rng(),
 /// )?;
 ///
 /// // Encrypt a sealed-sender message.
 /// let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
-/// let encrypted_message: Vec<u8> = block_on(signal::sealed_sender_encrypt(
-///   &dest.external.clone().into(),
-///   &sender_cert, ptext.as_ref(),
-///   &mut store.0.session_store, &mut store.0.identity_store,
+/// let outgoing_message: CiphertextMessage = block_on(message_encrypt(
+///   ptext.as_ref(),
+///   &bob_address,
+///   &mut alice_store.0.session_store, &mut alice_store.0.identity_store,
 ///   None,
-///   &mut rand::thread_rng(),
 /// ))?;
-/// assert!(encrypted_message.len() > 0);
+/// let incoming_message = CiphertextMessage::PreKeySignalMessage(
+///   PreKeySignalMessage::try_from(outgoing_message.serialize())?,
+/// );
+///
+/// // Save a pre-key.
+/// let pre_key_record = PreKeyRecord::new(pre_key_id.into(),
+///                                        &bob_pre_key_pair.inner.clone().into());
+/// block_on(bob_store.0.save_pre_key(pre_key_id.into(), &pre_key_record, None))?;
+///
+/// let timestamp: u64 = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+/// let signed_pre_key_record = SignedPreKeyRecord::new(signed_pre_key_id.into(),
+///                                                     timestamp,
+///                                                     &bob_signed_pre_key_pair.inner.clone().into(),
+///                                                     &bob_pub_sign);
+/// block_on(bob_store.0.save_signed_pre_key(signed_pre_key_id.into(), &signed_pre_key_record, None))?;
+///
+/// /// Decrypt the ciphertext.
+/// let decrypted: Box<[u8]> = block_on(message_decrypt(
+///   &incoming_message,
+///   &alice_address,
+///   &mut bob_store.0.session_store, &mut bob_store.0.identity_store,
+///   &mut bob_store.0.pre_key_store, &mut bob_store.0.signed_pre_key_store,
+///   &mut rand::thread_rng(),
+///   None,
+/// ))?.into_boxed_slice();
+///
+/// assert!(decrypted.as_ref() == ptext.as_ref());
+/// assert!("asdf" == std::str::from_utf8(decrypted.as_ref()).unwrap());
+///
+/// // Respond, as Bob.
+/// let bobs_response = "oh ok";
+/// let bobs_session_with_alice = block_on(bob_store.0.load_session(&alice_address, None))?;
+///
+/// let bob_outgoing = block_on(message_encrypt(
+///   bobs_response.as_bytes(),
+///   &alice_address,
+///   &mut bob_store.0.session_store, &mut bob_store.0.identity_store,
+///   None,
+/// ))?;
+/// let alice_incoming = block_on(message_decrypt(
+///   &bob_outgoing,
+///   &bob_address,
+///   &mut alice_store.0.session_store, &mut alice_store.0.identity_store,
+///   &mut alice_store.0.pre_key_store, &mut alice_store.0.signed_pre_key_store,
+///   &mut rand::thread_rng(),
+///   None,
+/// ))?;
+///
+/// assert!(&alice_incoming[..] == bobs_response.as_bytes());
+/// assert!("oh ok" == std::str::from_utf8(alice_incoming.as_ref()).unwrap());
+///
 /// # Ok(())
 /// # }
 ///```
