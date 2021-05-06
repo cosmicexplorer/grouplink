@@ -3,6 +3,8 @@
 
 //! ???
 
+use crate::store::StoreError;
+
 use libsignal_protocol::SignalProtocolError;
 use prost;
 
@@ -46,6 +48,7 @@ impl error::Error for ProtobufCodingFailure {
 pub enum Error {
   ProtobufEncodingError(ProtobufCodingFailure),
   ProtobufDecodingError(ProtobufCodingFailure),
+  Store(StoreError),
   Signal(SignalProtocolError),
 }
 
@@ -60,6 +63,7 @@ impl error::Error for Error {
   fn source(&self) -> Option<&(dyn error::Error + 'static)> {
     match self {
       Self::ProtobufEncodingError(e) | Self::ProtobufDecodingError(e) => Some(e),
+      Self::Store(_) => None,
       Self::Signal(e) => Some(e),
     }
   }

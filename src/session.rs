@@ -22,6 +22,7 @@
 //! let alice_store_request = DirectoryStoreRequest {
 //!   path: PathBuf::from("/home/cosmicexplorer/alice"),
 //!   id: alice.crypto,
+//!   behavior: ExtractionBehavior::OverwriteWithDefault,
 //!  };
 //! let mut alice_store =
 //!   block_on(FileStore::initialize_file_backed_store_with_default(
@@ -33,6 +34,7 @@
 //! let bob_store_request = DirectoryStoreRequest {
 //!   path: PathBuf::from("/home/cosmicexplorer/bob"),
 //!   id: bob.crypto,
+//!   behavior: ExtractionBehavior::OverwriteWithDefault,
 //! };
 //! let mut bob_store =
 //!   block_on(FileStore::initialize_file_backed_store_with_default(

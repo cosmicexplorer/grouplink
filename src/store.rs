@@ -46,6 +46,18 @@ pub struct Store<
   pub _record: PhantomData<Record>,
 }
 
+#[derive(Debug, Clone)]
+pub enum StoreError {
+  NonMatchingStoreIdentity(signal::IdentityKeyPair),
+  NonMatchingStoreSeed(signal::SessionSeed),
+}
+
+impl From<StoreError> for Error {
+  fn from(value: StoreError) -> Self {
+    Error::Store(value)
+  }
+}
+
 pub mod conversions {
   use super::proto;
   use crate::error::{Error, ProtobufCodingFailure};
@@ -425,13 +437,13 @@ pub mod conversions {
 
 pub mod file_persistence {
   use super::conversions::{IdStore, PKStore, SKStore, SPKStore, SStore};
-  use super::{Persistent, Store};
+  use super::{Persistent, Store, StoreError};
 
   use crate::error::{Error, ProtobufCodingFailure};
   use crate::identity::CryptographicIdentity;
 
   use async_trait::async_trait;
-  use libsignal_protocol as signal;
+  use libsignal_protocol::{self as signal, IdentityKeyStore};
   use uuid::Uuid;
 
   use std::convert::{TryFrom, TryInto};
@@ -750,6 +762,36 @@ pub mod file_persistence {
     FileSenderKeyStore,
   >;
 
+  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+  pub enum ExtractionBehavior {
+    ReadOrError,
+    ReadOrDefault,
+    OverwriteWithDefault,
+  }
+
+  impl ExtractionBehavior {
+    pub async fn extract<P: Persistent<PathBuf>, F: FnOnce() -> P>(
+      &self,
+      path: PathBuf,
+      make_default: F,
+    ) -> Result<P, Error> {
+      let mut result = match self {
+        Self::OverwriteWithDefault => make_default(),
+        _ => match P::extract(path).await {
+          Ok(store) => store,
+          Err(e) => match self {
+            Self::ReadOrError => {
+              return Err(e);
+            }
+            _ => make_default(),
+          },
+        },
+      };
+      result.persist().await?;
+      Ok(result)
+    }
+  }
+
   #[derive(Debug, Clone)]
   pub struct FileStoreRequest {
     pub session: PathBuf,
@@ -758,6 +800,7 @@ pub mod file_persistence {
     pub identity: PathBuf,
     pub sender_key: PathBuf,
     pub id: CryptographicIdentity,
+    pub behavior: ExtractionBehavior,
   }
 
   impl FileStore {
@@ -774,63 +817,57 @@ pub mod file_persistence {
           inner: key_pair,
           seed: id,
         },
+        behavior,
       } = request;
       Ok(Store {
-        session_store: match FileSessionStore::extract(session.clone()).await {
-          Ok(store) => store,
-          Err(_) => {
-            let mut default = FileSessionStore {
-              inner: SStore::default(),
-              path: session,
-            };
-            default.persist().await?;
-            default
+        session_store: behavior
+          .extract::<FileSessionStore, _>(session.clone(), || FileSessionStore {
+            inner: SStore::default(),
+            path: session,
+          })
+          .await?,
+        pre_key_store: behavior
+          .extract::<FilePreKeyStore, _>(prekey.clone(), || FilePreKeyStore {
+            inner: PKStore::default(),
+            path: prekey,
+          })
+          .await?,
+        signed_pre_key_store: behavior
+          .extract::<FileSignedPreKeyStore, _>(signed_prekey.clone(), || FileSignedPreKeyStore {
+            inner: SPKStore::default(),
+            path: signed_prekey,
+          })
+          .await?,
+        identity_store: match behavior
+          .extract::<FileIdStore, _>(identity.clone(), || FileIdStore {
+            inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id)),
+            path: identity,
+          })
+          .await
+        {
+          Ok(store) => {
+            let stored_identity = store.get_identity_key_pair(None).await?;
+            if key_pair != stored_identity {
+              return Err(Error::Store(StoreError::NonMatchingStoreIdentity(
+                stored_identity,
+              )));
+            }
+            let stored_seed = store.get_local_registration_id(None).await?;
+            if id != stored_seed {
+              return Err(Error::Store(StoreError::NonMatchingStoreSeed(stored_seed)));
+            }
+            store
+          }
+          Err(e) => {
+            return Err(e);
           }
         },
-        pre_key_store: match FilePreKeyStore::extract(prekey.clone()).await {
-          Ok(store) => store,
-          Err(_) => {
-            let mut default = FilePreKeyStore {
-              inner: PKStore::default(),
-              path: prekey,
-            };
-            default.persist().await?;
-            default
-          }
-        },
-        signed_pre_key_store: match FileSignedPreKeyStore::extract(signed_prekey.clone()).await {
-          Ok(store) => store,
-          Err(_) => {
-            let mut default = FileSignedPreKeyStore {
-              inner: SPKStore::default(),
-              path: signed_prekey,
-            };
-            default.persist().await?;
-            default
-          }
-        },
-        identity_store: match FileIdStore::extract(identity.clone()).await {
-          Ok(store) => store,
-          Err(_) => {
-            let mut default = FileIdStore {
-              inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id)),
-              path: identity,
-            };
-            default.persist().await?;
-            default
-          }
-        },
-        sender_key_store: match FileSenderKeyStore::extract(sender_key.clone()).await {
-          Ok(store) => store,
-          Err(_) => {
-            let mut default = FileSenderKeyStore {
-              inner: SKStore::default(),
-              path: sender_key,
-            };
-            default.persist().await?;
-            default
-          }
-        },
+        sender_key_store: behavior
+          .extract::<FileSenderKeyStore, _>(sender_key.clone(), || FileSenderKeyStore {
+            inner: SKStore::default(),
+            path: sender_key,
+          })
+          .await?,
         _record: PhantomData,
       })
     }
@@ -839,11 +876,12 @@ pub mod file_persistence {
   pub struct DirectoryStoreRequest {
     pub path: PathBuf,
     pub id: CryptographicIdentity,
+    pub behavior: ExtractionBehavior,
   }
 
   impl DirectoryStoreRequest {
     pub fn into_layout(self) -> Result<FileStoreRequest, Error> {
-      let DirectoryStoreRequest { path, id } = self;
+      let DirectoryStoreRequest { path, id, behavior } = self;
       fs::create_dir_all(&path)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?;
       let session = path.join(".session");
@@ -858,6 +896,7 @@ pub mod file_persistence {
         identity,
         sender_key,
         id,
+        behavior,
       })
     }
   }
