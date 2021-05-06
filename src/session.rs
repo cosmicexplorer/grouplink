@@ -18,12 +18,12 @@
 //! let alice_address: ProtocolAddress = alice.external.clone().into();
 //!
 //! // Create a mutable store.
-//! let mut alice_store = Store::new(alice.crypto);
+//! let mut alice_store = Store::new(alice.crypto)?;
 //!
 //! // Create a destination identity.
 //! let bob = Identity::generate((), &mut rand::thread_rng());
 //! let bob_address: ProtocolAddress = bob.external.clone().into();
-//! let mut bob_store = Store::new(bob.crypto);
+//! let mut bob_store = Store::new(bob.crypto)?;
 //!
 //! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 //! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
