@@ -154,7 +154,7 @@ pub mod conversions {
     }
   }
 
-  #[derive(Debug, Clone)]
+  #[derive(Debug, Clone, Default)]
   pub struct PKStore(pub signal::InMemPreKeyStore);
 
   impl From<signal::InMemPreKeyStore> for PKStore {
@@ -215,7 +215,7 @@ pub mod conversions {
     }
   }
 
-  #[derive(Debug, Clone)]
+  #[derive(Debug, Clone, Default)]
   pub struct SPKStore(pub signal::InMemSignedPreKeyStore);
 
   impl From<signal::InMemSignedPreKeyStore> for SPKStore {
@@ -276,7 +276,7 @@ pub mod conversions {
     }
   }
 
-  #[derive(Debug, Clone)]
+  #[derive(Debug, Clone, Default)]
   pub struct SStore(pub signal::InMemSessionStore);
 
   impl From<signal::InMemSessionStore> for SStore {
@@ -341,7 +341,7 @@ pub mod conversions {
     }
   }
 
-  #[derive(Clone, Debug)]
+  #[derive(Clone, Debug, Default)]
   pub struct SKStore(pub signal::InMemSenderKeyStore);
 
   impl From<signal::InMemSenderKeyStore> for SKStore {
@@ -428,12 +428,14 @@ pub mod file_persistence {
   use super::{Persistent, Store};
 
   use crate::error::{Error, ProtobufCodingFailure};
+  use crate::identity::CryptographicIdentity;
 
   use async_trait::async_trait;
   use libsignal_protocol as signal;
   use uuid::Uuid;
 
   use std::convert::{TryFrom, TryInto};
+  use std::default::Default;
   use std::fs;
   use std::marker::PhantomData;
   use std::path::PathBuf;
@@ -755,23 +757,80 @@ pub mod file_persistence {
     pub signed_prekey: PathBuf,
     pub identity: PathBuf,
     pub sender_key: PathBuf,
+    pub id: CryptographicIdentity,
   }
 
   impl FileStore {
-    pub async fn extract_file_backed_store(request: FileStoreRequest) -> Result<Self, Error> {
+    pub async fn initialize_file_backed_store_with_default(
+      request: FileStoreRequest,
+    ) -> Result<Self, Error> {
       let FileStoreRequest {
         session,
         prekey,
         signed_prekey,
         identity,
         sender_key,
+        id: CryptographicIdentity {
+          inner: key_pair,
+          seed: id,
+        },
       } = request;
       Ok(Store {
-        session_store: FileSessionStore::extract(session).await?,
-        pre_key_store: FilePreKeyStore::extract(prekey).await?,
-        signed_pre_key_store: FileSignedPreKeyStore::extract(signed_prekey).await?,
-        identity_store: FileIdStore::extract(identity).await?,
-        sender_key_store: FileSenderKeyStore::extract(sender_key).await?,
+        session_store: match FileSessionStore::extract(session.clone()).await {
+          Ok(store) => store,
+          Err(_) => {
+            let mut default = FileSessionStore {
+              inner: SStore::default(),
+              path: session,
+            };
+            default.persist().await?;
+            default
+          }
+        },
+        pre_key_store: match FilePreKeyStore::extract(prekey.clone()).await {
+          Ok(store) => store,
+          Err(_) => {
+            let mut default = FilePreKeyStore {
+              inner: PKStore::default(),
+              path: prekey,
+            };
+            default.persist().await?;
+            default
+          }
+        },
+        signed_pre_key_store: match FileSignedPreKeyStore::extract(signed_prekey.clone()).await {
+          Ok(store) => store,
+          Err(_) => {
+            let mut default = FileSignedPreKeyStore {
+              inner: SPKStore::default(),
+              path: signed_prekey,
+            };
+            default.persist().await?;
+            default
+          }
+        },
+        identity_store: match FileIdStore::extract(identity.clone()).await {
+          Ok(store) => store,
+          Err(_) => {
+            let mut default = FileIdStore {
+              inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id)),
+              path: identity,
+            };
+            default.persist().await?;
+            default
+          }
+        },
+        sender_key_store: match FileSenderKeyStore::extract(sender_key.clone()).await {
+          Ok(store) => store,
+          Err(_) => {
+            let mut default = FileSenderKeyStore {
+              inner: SKStore::default(),
+              path: sender_key,
+            };
+            default.persist().await?;
+            default
+          }
+        },
         _record: PhantomData,
       })
     }
@@ -779,11 +838,12 @@ pub mod file_persistence {
 
   pub struct DirectoryStoreRequest {
     pub path: PathBuf,
+    pub id: CryptographicIdentity,
   }
 
   impl DirectoryStoreRequest {
     pub fn into_layout(self) -> Result<FileStoreRequest, Error> {
-      let DirectoryStoreRequest { path } = self;
+      let DirectoryStoreRequest { path, id } = self;
       fs::create_dir_all(&path)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?;
       let session = path.join(".session");
@@ -797,6 +857,7 @@ pub mod file_persistence {
         signed_prekey,
         identity,
         sender_key,
+        id,
       })
     }
   }

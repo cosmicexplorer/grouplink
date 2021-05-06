@@ -19,16 +19,24 @@
 //! let alice_address: ProtocolAddress = alice.external.clone().into();
 //!
 //! // Create a mutable store.
-//! let alice_store_request = DirectoryStoreRequest { path: PathBuf::from("/home/cosmicexplorer/alice") };
+//! let alice_store_request = DirectoryStoreRequest {
+//!   path: PathBuf::from("/home/cosmicexplorer/alice"),
+//!   id: alice.crypto,
+//!  };
 //! let mut alice_store =
-//!   block_on(FileStore::extract_file_backed_store(alice_store_request.into_layout()?))?;
+//!   block_on(FileStore::initialize_file_backed_store_with_default(
+//!              alice_store_request.into_layout()?))?;
 //!
 //! // Create a destination identity.
 //! let bob = Identity::generate((), &mut rand::thread_rng());
 //! let bob_address: ProtocolAddress = bob.external.clone().into();
-//! let bob_store_request = DirectoryStoreRequest { path: PathBuf::from("/home/cosmicexplorer/bob") };
+//! let bob_store_request = DirectoryStoreRequest {
+//!   path: PathBuf::from("/home/cosmicexplorer/bob"),
+//!   id: bob.crypto,
+//! };
 //! let mut bob_store =
-//!   block_on(FileStore::extract_file_backed_store(bob_store_request.into_layout()?))?;
+//!   block_on(FileStore::initialize_file_backed_store_with_default(
+//!              bob_store_request.into_layout()?))?;
 //!
 //! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 //! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
