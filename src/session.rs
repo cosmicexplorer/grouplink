@@ -109,10 +109,10 @@ pub mod proto {
 
 use crate::error::{Error, ProtobufCodingFailure};
 use crate::identity::{CryptographicIdentity, ExternalIdentity, Spontaneous};
-use crate::store::Store;
+use crate::store::Persistent;
 use crate::util::encode_proto_message;
 
-use libsignal_protocol::{self as signal, IdentityKeyStore, PreKeyStore, SignedPreKeyStore};
+use libsignal_protocol as signal;
 use prost::Message;
 use rand::{self, CryptoRng, Rng};
 
@@ -141,25 +141,37 @@ pub struct SignedPreKey {
 }
 
 impl SignedPreKey {
-  pub async fn intern<R: CryptoRng + Rng>(
+  pub async fn intern<
+    ID: signal::IdentityKeyStore + Persistent,
+    SPK: signal::SignedPreKeyStore + Persistent,
+    R: CryptoRng + Rng,
+  >(
     params: SignedPreKeyRequest,
-    store: &mut Store,
+    id_store: &mut ID,
+    signed_prekey_store: &mut SPK,
     csprng: &mut R,
   ) -> Result<Self, Error> {
     let SignedPreKeyRequest { id, pair } = params;
+
     let timestamp: u64 = SystemTime::now()
       .duration_since(SystemTime::UNIX_EPOCH)
       .expect("timestamp calculation will never fail")
       .as_secs();
     let pub_signed_prekey: Box<[u8]> = pair.public_key().serialize();
-    let pub_sign = store
-      .0
+
+    let pub_sign = id_store
       .get_identity_key_pair(None)
       .await?
       .private_key()
       .calculate_signature(&pub_signed_prekey, csprng)?;
+    id_store.persist().await?;
+
     let inner = signal::SignedPreKeyRecord::new(id.into(), timestamp, &pair.into(), &pub_sign);
-    store.0.save_signed_pre_key(id.into(), &inner, None).await?;
+    signed_prekey_store
+      .save_signed_pre_key(id.into(), &inner, None)
+      .await?;
+    signed_prekey_store.persist().await?;
+
     Ok(Self {
       id,
       pair,
@@ -189,10 +201,14 @@ pub struct OneTimePreKey {
 }
 
 impl OneTimePreKey {
-  pub async fn intern(params: OneTimePreKeyRequest, store: &mut Store) -> Result<Self, Error> {
+  pub async fn intern<PK: signal::PreKeyStore + Persistent>(
+    params: OneTimePreKeyRequest,
+    store: &mut PK,
+  ) -> Result<Self, Error> {
     let OneTimePreKeyRequest { id, pair } = params;
     let inner = signal::PreKeyRecord::new(id.into(), &pair.into());
-    store.0.save_pre_key(id.into(), &inner, None).await?;
+    store.save_pre_key(id.into(), &inner, None).await?;
+    store.persist().await?;
     Ok(Self { id, pair })
   }
 }
@@ -206,14 +222,14 @@ pub struct PreKeyBundleRequest {
 }
 
 impl PreKeyBundleRequest {
-  pub async fn create(
+  pub async fn create<ID: signal::IdentityKeyStore + Persistent>(
     destination: ExternalIdentity,
     signed: SignedPreKey,
     one_time: OneTimePreKey,
-    store: &Store,
+    store: &ID,
   ) -> Result<Self, Error> {
-    let seed = store.0.get_local_registration_id(None).await?;
-    let inner = store.0.get_identity_key_pair(None).await?;
+    let seed = store.get_local_registration_id(None).await?;
+    let inner = store.get_identity_key_pair(None).await?;
     let identity = CryptographicIdentity { inner, seed };
     Ok(Self {
       destination,
@@ -386,32 +402,48 @@ pub struct InitialOutwardMessage {
 }
 
 impl InitialOutwardMessage {
-  pub async fn intern<'a, 'b, 'c, R: Rng + CryptoRng>(
+  pub async fn intern<
+    'a,
+    'b,
+    'c,
+    'd,
+    S: signal::SessionStore + Persistent,
+    ID: signal::IdentityKeyStore + Persistent,
+    R: Rng + CryptoRng,
+  >(
     params: InitialOutwardMessageRequest<'a>,
-    store: &'b mut Store,
-    csprng: &'c mut R,
+    session_store: &'b mut S,
+    id_store: &'c mut ID,
+    csprng: &'d mut R,
   ) -> Result<Self, Error> {
     let InitialOutwardMessageRequest {
       bundle: PreKeyBundle { destination, inner },
       plaintext,
     } = params;
+
     signal::process_prekey_bundle(
       &destination.clone().into(),
-      &mut store.0.session_store,
-      &mut store.0.identity_store,
+      session_store,
+      id_store,
       &inner,
       csprng,
       None,
     )
     .await?;
+    session_store.persist().await?;
+    id_store.persist().await?;
+
     let outgoing_message: signal::CiphertextMessage = signal::message_encrypt(
       plaintext,
       &destination.clone().into(),
-      &mut store.0.session_store,
-      &mut store.0.identity_store,
+      session_store,
+      id_store,
       None,
     )
     .await?;
+    session_store.persist().await?;
+    id_store.persist().await?;
+
     let inner = signal::PreKeySignalMessage::try_from(outgoing_message.serialize())?;
     Ok(Self { inner })
   }
@@ -477,10 +509,19 @@ pub struct SessionInitiatingMessage {
 }
 
 impl SessionInitiatingMessage {
-  pub async fn intern<R: Rng + CryptoRng>(
+  pub async fn intern<
+    S: signal::SessionStore + Persistent,
+    ID: signal::IdentityKeyStore + Persistent,
+    PK: signal::PreKeyStore + Persistent,
+    SPK: signal::SignedPreKeyStore + Persistent,
+    R: Rng + CryptoRng,
+  >(
     request: SessionInitiatingMessageRequest,
     sender: ExternalIdentity,
-    store: &mut Store,
+    session_store: &mut S,
+    id_store: &mut ID,
+    prekey_store: &mut PK,
+    signed_prekey_store: &mut SPK,
     csprng: &mut R,
   ) -> Result<Self, Error> {
     let SessionInitiatingMessageRequest {
@@ -489,15 +530,19 @@ impl SessionInitiatingMessage {
     let decrypted: Box<[u8]> = signal::message_decrypt(
       &signal::CiphertextMessage::PreKeySignalMessage(inner),
       &sender.clone().into(),
-      &mut store.0.session_store,
-      &mut store.0.identity_store,
-      &mut store.0.pre_key_store,
-      &mut store.0.signed_pre_key_store,
+      session_store,
+      id_store,
+      prekey_store,
+      signed_prekey_store,
       csprng,
       None,
     )
     .await?
     .into_boxed_slice();
+    session_store.persist().await?;
+    id_store.persist().await?;
+    prekey_store.persist().await?;
+    signed_prekey_store.persist().await?;
     Ok(Self {
       plaintext: decrypted,
     })
@@ -515,19 +560,20 @@ pub struct FollowUpMessage {
 }
 
 impl FollowUpMessage {
-  pub async fn intern<'a>(
+  pub async fn intern<
+    'a,
+    S: signal::SessionStore + Persistent,
+    ID: signal::IdentityKeyStore + Persistent,
+  >(
     request: FollowUpMessageRequest<'a>,
-    store: &mut Store,
+    session_store: &mut S,
+    id_store: &mut ID,
   ) -> Result<Self, Error> {
     let FollowUpMessageRequest { target, plaintext } = request;
-    let inner = signal::message_encrypt(
-      plaintext,
-      &target.into(),
-      &mut store.0.session_store,
-      &mut store.0.identity_store,
-      None,
-    )
-    .await?;
+    let inner =
+      signal::message_encrypt(plaintext, &target.into(), session_store, id_store, None).await?;
+    session_store.persist().await?;
+    id_store.persist().await?;
     match inner {
       signal::CiphertextMessage::SignalMessage(inner) => Ok(Self { inner }),
       x => unreachable!("expected the result of signal::message_encrypt() to return a normal message, but was: {:?}", x.message_type())
@@ -583,25 +629,38 @@ pub struct DecryptedMessage {
 }
 
 impl DecryptedMessage {
-  pub async fn intern<R: Rng + CryptoRng>(
+  pub async fn intern<
+    S: signal::SessionStore + Persistent,
+    ID: signal::IdentityKeyStore + Persistent,
+    PK: signal::PreKeyStore + Persistent,
+    SPK: signal::SignedPreKeyStore + Persistent,
+    R: Rng + CryptoRng,
+  >(
     request: FollowUpMessage,
     sender: ExternalIdentity,
-    store: &mut Store,
+    session_store: &mut S,
+    id_store: &mut ID,
+    prekey_store: &mut PK,
+    signed_prekey_store: &mut SPK,
     csprng: &mut R,
   ) -> Result<Self, Error> {
     let FollowUpMessage { inner } = request;
     let decrypted: Box<[u8]> = signal::message_decrypt(
       &signal::CiphertextMessage::SignalMessage(inner),
       &sender.clone().into(),
-      &mut store.0.session_store,
-      &mut store.0.identity_store,
-      &mut store.0.pre_key_store,
-      &mut store.0.signed_pre_key_store,
+      session_store,
+      id_store,
+      prekey_store,
+      signed_prekey_store,
       csprng,
       None,
     )
     .await?
     .into_boxed_slice();
+    session_store.persist().await?;
+    id_store.persist().await?;
+    prekey_store.persist().await?;
+    signed_prekey_store.persist().await?;
     Ok(Self {
       plaintext: decrypted,
     })

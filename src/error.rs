@@ -6,13 +6,17 @@
 use libsignal_protocol::SignalProtocolError;
 use prost;
 
+use std::convert::Infallible;
 use std::error;
 use std::fmt;
+use std::io;
 
 #[derive(Debug)]
 pub enum ProtobufCodingFailure {
   OptionalFieldAbsent(String),
   FieldCompositionWasIncorrect(String),
+  MapStringCodingFailed(String),
+  FileWritingFailed(io::Error),
   Encode(prost::EncodeError),
   Decode(prost::DecodeError),
 }
@@ -29,6 +33,8 @@ impl error::Error for ProtobufCodingFailure {
     match self {
       Self::OptionalFieldAbsent(_) => None,
       Self::FieldCompositionWasIncorrect(_) => None,
+      Self::MapStringCodingFailed(_) => None,
+      Self::FileWritingFailed(e) => Some(e),
       Self::Encode(e) => Some(e),
       Self::Decode(e) => Some(e),
     }
@@ -74,5 +80,11 @@ impl From<prost::DecodeError> for Error {
 impl From<SignalProtocolError> for Error {
   fn from(err: SignalProtocolError) -> Error {
     Error::Signal(err)
+  }
+}
+
+impl From<Infallible> for Error {
+  fn from(_err: Infallible) -> Error {
+    unreachable!()
   }
 }

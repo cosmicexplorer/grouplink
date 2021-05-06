@@ -1,0 +1,30 @@
+syntax = "proto2";
+
+/* Copyright 2021 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+package grouplink.proto.store;
+
+import "identity.proto";
+
+message IdentityKeyStore {
+  optional bytes signal_key_pair = 1;
+  optional uint32 session_seed   = 2;
+  map<string, bytes> known_keys  = 3;
+}
+
+message PreKeyStore {
+  map<uint32, bytes> pre_keys = 1;
+}
+
+message SignedPreKeyStore {
+  map<uint32, bytes> signed_pre_keys = 1;
+}
+
+message SessionStore {
+  map<string, bytes> sessions = 1;
+}
+
+message SenderKeyStore {
+  map<string, bytes> keys = 1;
+}

@@ -98,6 +98,39 @@ pub struct ExternalIdentity {
   pub device_id: signal::DeviceId,
 }
 
+impl ExternalIdentity {
+  pub fn as_unambiguous_string(&self) -> String {
+    format!("{}/{}", self.name, self.device_id)
+  }
+
+  pub fn from_unambiguous_string(s: &str) -> Result<Self, Error> {
+    s.find('/')
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::MapStringCodingFailed(format!(
+          "failed to decode an address from a string used as a protobuf map key! was: '{}'",
+          s
+        )))
+      })
+      .and_then(|slash_index| {
+        let address_str = &s[..slash_index];
+        let id_str = &s[slash_index + 1..];
+        let device_id: signal::DeviceId = id_str
+          .parse::<u32>()
+          .map_err(|e| {
+            Error::ProtobufDecodingError(ProtobufCodingFailure::MapStringCodingFailed(format!(
+              "failed ({:?}) to parse device id from a string used as a protobuf map key! was: '{}'",
+              e, s
+            )))
+          })?
+          .into();
+        Ok(Self {
+          name: address_str.to_string(),
+          device_id,
+        })
+      })
+  }
+}
+
 impl fmt::Display for ExternalIdentity {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let address: signal::ProtocolAddress = self.clone().into();

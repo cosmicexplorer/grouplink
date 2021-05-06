@@ -343,6 +343,7 @@ dependencies = [
 name = "grouplink"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "futures",
  "libc",
@@ -412,7 +413,7 @@ checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 [[package]]
 name = "libsignal-protocol"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=e22906034ca17d6139344255082ae95068b3edb8#e22906034ca17d6139344255082ae95068b3edb8"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=aee6669579d6bd9d56a0792c0d3ed0e1302d3cca#aee6669579d6bd9d56a0792c0d3ed0e1302d3cca"
 dependencies = [
  "aes",
  "arrayref",
@@ -760,7 +761,7 @@ dependencies = [
 [[package]]
 name = "signal-crypto"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=e22906034ca17d6139344255082ae95068b3edb8#e22906034ca17d6139344255082ae95068b3edb8"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=aee6669579d6bd9d56a0792c0d3ed0e1302d3cca#aee6669579d6bd9d56a0792c0d3ed0e1302d3cca"
 dependencies = [
  "aes-soft",
  "aesni",
