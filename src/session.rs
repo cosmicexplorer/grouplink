@@ -14,31 +14,28 @@
 //! use std::convert::{TryFrom, TryInto};
 //!
 //! // Create a new identity.
-//! let crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
-//! let external = ExternalIdentity::generate((), &mut rand::thread_rng());
-//! let alice = Identity { crypto, external: external.clone() };
+//! let alice = Identity::generate((), &mut rand::thread_rng());
 //! let alice_address: ProtocolAddress = alice.external.clone().into();
 //!
 //! // Create a mutable store.
 //! let mut alice_store = Store::new(alice.crypto);
 //!
 //! // Create a destination identity.
-//! let bob_crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
-//! let bob_ext = ExternalIdentity::generate((), &mut rand::thread_rng());
-//! let bob = Identity { crypto: bob_crypto, external: bob_ext };
+//! let bob = Identity::generate((), &mut rand::thread_rng());
 //! let bob_address: ProtocolAddress = bob.external.clone().into();
 //! let mut bob_store = Store::new(bob.crypto);
 //!
 //! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 //! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
-//! let bob_signed_pre_key = block_on(SignedPreKey::intern(
-//!                                     SignedPreKeyRequest::generate((), &mut rand::thread_rng()),
-//!                                     &mut bob_store,
-//!                                     &mut rand::thread_rng()))?;
-//! let bob_one_time_pre_key = block_on(OneTimePreKey::intern(
-//!                                       OneTimePreKeyRequest::generate(
-//!                                         (), &mut rand::thread_rng()),
-//!                                       &mut bob_store))?;
+//! let bob_signed_pre_key =
+//!   block_on(SignedPreKey::intern(
+//!              SignedPreKeyRequest::generate((), &mut rand::thread_rng()),
+//!              &mut bob_store,
+//!              &mut rand::thread_rng()))?;
+//! let bob_one_time_pre_key =
+//!   block_on(OneTimePreKey::intern(
+//!              OneTimePreKeyRequest::generate((), &mut rand::thread_rng()),
+//!              &mut bob_store))?;
 //!
 //! // Generate the pre-key bundle.
 //! let bob_pre_key_bundle = PreKeyBundle::new(
@@ -46,11 +43,13 @@
 //!                                        bob_signed_pre_key,
 //!                                        bob_one_time_pre_key,
 //!                                        &bob_store))?)?;
+//! let encoded_pre_key_bundle: Box<[u8]> = bob_pre_key_bundle.try_into()?;
+//! let decoded_pre_key_bundle = PreKeyBundle::try_from(encoded_pre_key_bundle.as_ref())?;
 //!
 //! // Encrypt a message.
 //! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
 //! let initial_request = InitialOutwardMessageRequest {
-//!                         bundle: bob_pre_key_bundle,
+//!                         bundle: decoded_pre_key_bundle,
 //!                         plaintext: &ptext,
 //!                       };
 //! let initial_message = block_on(InitialOutwardMessage::intern(initial_request,
@@ -249,6 +248,129 @@ impl PreKeyBundle {
       *inner.identity_key(),
     )?;
     Ok(Self { destination, inner })
+  }
+}
+
+impl TryFrom<PreKeyBundle> for proto::PreKeyBundle {
+  type Error = Error;
+  fn try_from(value: PreKeyBundle) -> Result<Self, Error> {
+    let PreKeyBundle { destination, inner } = value;
+    Ok(proto::PreKeyBundle {
+      destination: Some(destination.into()),
+      registration_id: Some(inner.registration_id()?),
+      device_id: Some(inner.device_id()?),
+      pre_key_id: inner.pre_key_id()?.map(|id| id.into()),
+      pre_key_public: inner
+        .pre_key_public()?
+        .map(|key| key.serialize().into_vec()),
+      signed_pre_key_id: Some(inner.signed_pre_key_id()?.into()),
+      signed_pre_key_public: Some(inner.signed_pre_key_public()?.serialize().into_vec()),
+      signed_pre_key_signature: Some(inner.signed_pre_key_signature()?.to_vec()),
+      identity_key: Some(inner.identity_key()?.serialize().into_vec()),
+    })
+  }
+}
+
+impl TryFrom<PreKeyBundle> for Box<[u8]> {
+  type Error = Error;
+  fn try_from(value: PreKeyBundle) -> Result<Self, Error> {
+    let proto_message: proto::PreKeyBundle = value.try_into()?;
+    Ok(encode_proto_message(proto_message))
+  }
+}
+
+impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
+  type Error = Error;
+  fn try_from(value: proto::PreKeyBundle) -> Result<Self, Error> {
+    let proto::PreKeyBundle {
+      destination,
+      registration_id,
+      device_id,
+      pre_key_id,
+      pre_key_public,
+      signed_pre_key_id,
+      signed_pre_key_public,
+      signed_pre_key_signature,
+      identity_key,
+    } = value;
+    let destination: ExternalIdentity = destination
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `destination` field!"
+        )))
+      })?
+      .try_into()?;
+    let registration_id: u32 = registration_id.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `registration_id` field!"
+      )))
+    })?;
+    let device_id: u32 = device_id.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `device_id` field!"
+      )))
+    })?;
+    let pre_key_id: Option<signal::PreKeyId> = pre_key_id.map(|key| key.into());
+    let pre_key_public: Option<signal::PublicKey> = match pre_key_public {
+      Some(key) => Some(signal::PublicKey::try_from(key.as_ref())?),
+      None => None,
+    };
+    let pre_key: Option<(signal::PreKeyId, signal::PublicKey)> = match (pre_key_id, pre_key_public)
+    {
+      (Some(id), Some(key)) => Some((id, key)),
+      (None, None) => None,
+      _ => {
+        return Err(Error::ProtobufDecodingError(ProtobufCodingFailure::FieldCompositionWasIncorrect(
+          format!("if either the fields `pre_key_id` or `pre_key_public` are provided, then *BOTH* must be provided!"),
+        )))
+      }
+    };
+    let signed_pre_key_id: signal::SignedPreKeyId = signed_pre_key_id
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `signed_pre_key_id` field!"
+        )))
+      })?
+      .into();
+    let signed_pre_key_public: signal::PublicKey = signed_pre_key_public.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `signed_pre_key_public` field!"
+      )))
+    })?[..]
+      .try_into()?;
+    let signed_pre_key_signature: Vec<u8> = signed_pre_key_signature
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `signed_pre_key_signature` field!"
+        )))
+      })?
+      .to_vec();
+    let identity_key: signal::IdentityKey = identity_key.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+        "failed to find `identity_key` field!"
+      )))
+    })?[..]
+      .try_into()?;
+    Ok(Self {
+      destination,
+      inner: signal::PreKeyBundle::new(
+        registration_id,
+        device_id,
+        pre_key,
+        signed_pre_key_id,
+        signed_pre_key_public,
+        signed_pre_key_signature,
+        identity_key,
+      )?,
+    })
+  }
+}
+
+impl TryFrom<&[u8]> for PreKeyBundle {
+  type Error = Error;
+  fn try_from(value: &[u8]) -> Result<Self, Error> {
+    let proto_message = proto::PreKeyBundle::decode(value)?;
+    Self::try_from(proto_message)
   }
 }
 

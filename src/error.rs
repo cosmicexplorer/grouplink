@@ -12,6 +12,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum ProtobufCodingFailure {
   OptionalFieldAbsent(String),
+  FieldCompositionWasIncorrect(String),
   Encode(prost::EncodeError),
   Decode(prost::DecodeError),
 }
@@ -27,6 +28,7 @@ impl error::Error for ProtobufCodingFailure {
   fn source(&self) -> Option<&(dyn error::Error + 'static)> {
     match self {
       Self::OptionalFieldAbsent(_) => None,
+      Self::FieldCompositionWasIncorrect(_) => None,
       Self::Encode(e) => Some(e),
       Self::Decode(e) => Some(e),
     }

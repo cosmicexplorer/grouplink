@@ -206,6 +206,14 @@ pub struct Identity {
   pub external: ExternalIdentity,
 }
 
+impl Spontaneous<()> for Identity {
+  fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
+    let crypto = CryptographicIdentity::generate((), csprng);
+    let external = ExternalIdentity::generate((), csprng);
+    Self { crypto, external }
+  }
+}
+
 impl From<Identity> for proto::Identity {
   fn from(value: Identity) -> Self {
     let Identity { crypto, external } = value;

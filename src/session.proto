@@ -7,6 +7,18 @@ package grouplink.proto.session;
 
 import "identity.proto";
 
+message PreKeyBundle {
+  optional grouplink.proto.identity.Address destination = 1;
+  optional uint32 registration_id                       = 2;
+  optional uint32 device_id                             = 3;
+  optional uint32 pre_key_id                            = 4;
+  optional bytes pre_key_public                         = 5;
+  optional uint32 signed_pre_key_id                     = 6;
+  optional bytes signed_pre_key_public                  = 7;
+  optional bytes signed_pre_key_signature               = 8;
+  optional bytes identity_key                           = 9;
+}
+
 message SessionInitiatingMessageRequest {
   optional grouplink.proto.identity.Address sender = 1;
   optional bytes encrypted_pre_key_message         = 2;
