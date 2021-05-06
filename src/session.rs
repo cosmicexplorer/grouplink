@@ -5,56 +5,64 @@
 //!
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::{identity::*, session::*, store::*};
+//! use grouplink::{identity::*, session::*, store::{file_persistence::*, conversions::*, *}};
 //! use grouplink::session::PreKeyBundle;
 //! use libsignal_protocol::*;
 //! use rand::{self, Rng};
 //! use uuid::Uuid;
 //! use futures::executor::block_on;
 //! use std::convert::{TryFrom, TryInto};
+//! use std::path::PathBuf;
 //!
 //! // Create a new identity.
 //! let alice = Identity::generate((), &mut rand::thread_rng());
 //! let alice_address: ProtocolAddress = alice.external.clone().into();
 //!
 //! // Create a mutable store.
-//! let mut alice_store = Store::new(alice.crypto)?;
+//! let alice_store_request = DirectoryStoreRequest { path: PathBuf::from("/home/cosmicexplorer/alice") };
+//! let mut alice_store =
+//!   block_on(FileStore::extract_file_backed_store(alice_store_request.into_layout()?))?;
 //!
 //! // Create a destination identity.
 //! let bob = Identity::generate((), &mut rand::thread_rng());
 //! let bob_address: ProtocolAddress = bob.external.clone().into();
-//! let mut bob_store = Store::new(bob.crypto)?;
+//! let bob_store_request = DirectoryStoreRequest { path: PathBuf::from("/home/cosmicexplorer/bob") };
+//! let mut bob_store =
+//!   block_on(FileStore::extract_file_backed_store(bob_store_request.into_layout()?))?;
 //!
 //! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 //! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
 //! let bob_signed_pre_key =
 //!   block_on(SignedPreKey::intern(
 //!              SignedPreKeyRequest::generate((), &mut rand::thread_rng()),
-//!              &mut bob_store,
+//!              &mut bob_store.identity_store,
+//!              &mut bob_store.signed_pre_key_store,
 //!              &mut rand::thread_rng()))?;
 //! let bob_one_time_pre_key =
 //!   block_on(OneTimePreKey::intern(
 //!              OneTimePreKeyRequest::generate((), &mut rand::thread_rng()),
-//!              &mut bob_store))?;
+//!              &mut bob_store.pre_key_store))?;
 //!
 //! // Generate the pre-key bundle.
 //! let bob_pre_key_bundle = PreKeyBundle::new(
 //!   block_on(PreKeyBundleRequest::create(bob.external.clone(),
 //!                                        bob_signed_pre_key,
 //!                                        bob_one_time_pre_key,
-//!                                        &bob_store))?)?;
+//!                                        &bob_store.identity_store))?)?;
 //! let encoded_pre_key_bundle: Box<[u8]> = bob_pre_key_bundle.try_into()?;
 //! let decoded_pre_key_bundle = PreKeyBundle::try_from(encoded_pre_key_bundle.as_ref())?;
 //!
 //! // Encrypt a message.
 //! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
-//! let initial_request = InitialOutwardMessageRequest {
-//!                         bundle: decoded_pre_key_bundle,
-//!                         plaintext: &ptext,
-//!                       };
-//! let initial_message = block_on(InitialOutwardMessage::intern(initial_request,
-//!                                                              &mut alice_store,
-//!                                                              &mut rand::thread_rng()))?;
+//! let initial_message =
+//!   block_on(InitialOutwardMessage::intern(
+//!              InitialOutwardMessageRequest {
+//!                bundle: decoded_pre_key_bundle,
+//!                plaintext: &ptext,
+//!              },
+//!              &mut alice_store.session_store,
+//!              &mut alice_store.identity_store,
+//!              &mut rand::thread_rng()))?;
 //!
 //! // Decrypt the ciphertext.
 //! let session_request = SessionInitiatingMessageRequest {
@@ -66,7 +74,10 @@
 //! let session_initial_message =
 //!   block_on(SessionInitiatingMessage::intern(decoded_session_initiation_request,
 //!                                             alice.external.clone(),
-//!                                             &mut bob_store,
+//!                                             &mut bob_store.session_store,
+//!                                             &mut bob_store.identity_store,
+//!                                             &mut bob_store.pre_key_store,
+//!                                             &mut bob_store.signed_pre_key_store,
 //!                                             &mut rand::thread_rng(),
 //!                                        ))?;
 //!
@@ -75,18 +86,24 @@
 //!
 //! //?
 //! let bob_text = "oh ok";
-//! let bob_follow_up_request = FollowUpMessageRequest {
-//!                               target: alice.external.clone(),
-//!                               plaintext: bob_text.as_bytes(),
-//!                             };
-//! let bob_follow_up = block_on(FollowUpMessage::intern(bob_follow_up_request, &mut bob_store))?;
+//! let bob_follow_up =
+//!   block_on(FollowUpMessage::intern(
+//!              FollowUpMessageRequest {
+//!                target: alice.external.clone(),
+//!                plaintext: bob_text.as_bytes(),
+//!              },
+//!              &mut bob_store.session_store,
+//!              &mut bob_store.identity_store))?;
 //! let encoded_follow_up_message: Box<[u8]> = bob_follow_up.into();
 //! let decoded_follow_up_message =
 //!   FollowUpMessage::try_from(encoded_follow_up_message.as_ref())?;
 //! let alice_incoming = block_on(DecryptedMessage::intern(
 //!   decoded_follow_up_message,
 //!   bob.external.clone(),
-//!   &mut alice_store,
+//!   &mut alice_store.session_store,
+//!   &mut alice_store.identity_store,
+//!   &mut alice_store.pre_key_store,
+//!   &mut alice_store.signed_pre_key_store,
 //!   &mut rand::thread_rng(),
 //! ))?.plaintext;
 //!
@@ -142,8 +159,9 @@ pub struct SignedPreKey {
 
 impl SignedPreKey {
   pub async fn intern<
-    ID: signal::IdentityKeyStore + Persistent,
-    SPK: signal::SignedPreKeyStore + Persistent,
+    Record,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
+    SPK: signal::SignedPreKeyStore + Persistent<Record>,
     R: CryptoRng + Rng,
   >(
     params: SignedPreKeyRequest,
@@ -201,7 +219,7 @@ pub struct OneTimePreKey {
 }
 
 impl OneTimePreKey {
-  pub async fn intern<PK: signal::PreKeyStore + Persistent>(
+  pub async fn intern<Record, PK: signal::PreKeyStore + Persistent<Record>>(
     params: OneTimePreKeyRequest,
     store: &mut PK,
   ) -> Result<Self, Error> {
@@ -222,7 +240,7 @@ pub struct PreKeyBundleRequest {
 }
 
 impl PreKeyBundleRequest {
-  pub async fn create<ID: signal::IdentityKeyStore + Persistent>(
+  pub async fn create<Record, ID: signal::IdentityKeyStore + Persistent<Record>>(
     destination: ExternalIdentity,
     signed: SignedPreKey,
     one_time: OneTimePreKey,
@@ -407,8 +425,9 @@ impl InitialOutwardMessage {
     'b,
     'c,
     'd,
-    S: signal::SessionStore + Persistent,
-    ID: signal::IdentityKeyStore + Persistent,
+    Record,
+    S: signal::SessionStore + Persistent<Record>,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
     R: Rng + CryptoRng,
   >(
     params: InitialOutwardMessageRequest<'a>,
@@ -510,10 +529,11 @@ pub struct SessionInitiatingMessage {
 
 impl SessionInitiatingMessage {
   pub async fn intern<
-    S: signal::SessionStore + Persistent,
-    ID: signal::IdentityKeyStore + Persistent,
-    PK: signal::PreKeyStore + Persistent,
-    SPK: signal::SignedPreKeyStore + Persistent,
+    Record,
+    S: signal::SessionStore + Persistent<Record>,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
+    PK: signal::PreKeyStore + Persistent<Record>,
+    SPK: signal::SignedPreKeyStore + Persistent<Record>,
     R: Rng + CryptoRng,
   >(
     request: SessionInitiatingMessageRequest,
@@ -562,8 +582,9 @@ pub struct FollowUpMessage {
 impl FollowUpMessage {
   pub async fn intern<
     'a,
-    S: signal::SessionStore + Persistent,
-    ID: signal::IdentityKeyStore + Persistent,
+    Record,
+    S: signal::SessionStore + Persistent<Record>,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
   >(
     request: FollowUpMessageRequest<'a>,
     session_store: &mut S,
@@ -630,10 +651,11 @@ pub struct DecryptedMessage {
 
 impl DecryptedMessage {
   pub async fn intern<
-    S: signal::SessionStore + Persistent,
-    ID: signal::IdentityKeyStore + Persistent,
-    PK: signal::PreKeyStore + Persistent,
-    SPK: signal::SignedPreKeyStore + Persistent,
+    Record,
+    S: signal::SessionStore + Persistent<Record>,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
+    PK: signal::PreKeyStore + Persistent<Record>,
+    SPK: signal::SignedPreKeyStore + Persistent<Record>,
     R: Rng + CryptoRng,
   >(
     request: FollowUpMessage,

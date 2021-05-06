@@ -16,7 +16,7 @@ pub enum ProtobufCodingFailure {
   OptionalFieldAbsent(String),
   FieldCompositionWasIncorrect(String),
   MapStringCodingFailed(String),
-  FileWritingFailed(io::Error),
+  Io(io::Error),
   Encode(prost::EncodeError),
   Decode(prost::DecodeError),
 }
@@ -34,7 +34,7 @@ impl error::Error for ProtobufCodingFailure {
       Self::OptionalFieldAbsent(_) => None,
       Self::FieldCompositionWasIncorrect(_) => None,
       Self::MapStringCodingFailed(_) => None,
-      Self::FileWritingFailed(e) => Some(e),
+      Self::Io(e) => Some(e),
       Self::Encode(e) => Some(e),
       Self::Decode(e) => Some(e),
     }

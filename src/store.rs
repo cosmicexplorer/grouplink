@@ -18,25 +18,32 @@ use crate::error::Error;
 use async_trait::async_trait;
 use libsignal_protocol as signal;
 
+use std::marker::PhantomData;
+
 #[async_trait]
-pub trait Persistent {
+pub trait Persistent<Record> {
   async fn persist(&mut self) -> Result<(), Error>;
+  async fn extract(record: Record) -> Result<Self, Error>
+  where
+    Self: Sized;
 }
 
 /// ???
 #[derive(Debug, Clone)]
 pub struct Store<
-  S: signal::SessionStore + Persistent,
-  PK: signal::PreKeyStore + Persistent,
-  SPK: signal::SignedPreKeyStore + Persistent,
-  ID: signal::IdentityKeyStore + Persistent,
-  Sender: signal::SenderKeyStore + Persistent,
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
 > {
   pub session_store: S,
   pub pre_key_store: PK,
   pub signed_pre_key_store: SPK,
   pub identity_store: ID,
   pub sender_key_store: Sender,
+  pub _record: PhantomData<Record>,
 }
 
 pub mod conversions {
@@ -418,7 +425,7 @@ pub mod conversions {
 
 pub mod file_persistence {
   use super::conversions::{IdStore, PKStore, SKStore, SPKStore, SStore};
-  use super::Persistent;
+  use super::{Persistent, Store};
 
   use crate::error::{Error, ProtobufCodingFailure};
 
@@ -426,9 +433,10 @@ pub mod file_persistence {
   use libsignal_protocol as signal;
   use uuid::Uuid;
 
-  use std::convert::{AsRef, TryInto};
+  use std::convert::{TryFrom, TryInto};
   use std::fs;
-  use std::path::{Path, PathBuf};
+  use std::marker::PhantomData;
+  use std::path::PathBuf;
 
   #[derive(Debug, Clone)]
   pub struct FileIdStore {
@@ -437,11 +445,8 @@ pub mod file_persistence {
   }
 
   impl FileIdStore {
-    pub fn new<P: AsRef<Path>>(inner: IdStore, path: P) -> Self {
-      Self {
-        inner,
-        path: path.as_ref().to_path_buf(),
-      }
+    pub fn new(inner: IdStore, path: PathBuf) -> Self {
+      Self { inner, path }
     }
   }
 
@@ -491,11 +496,21 @@ pub mod file_persistence {
   }
 
   #[async_trait]
-  impl Persistent for FileIdStore {
+  impl Persistent<PathBuf> for FileIdStore {
     async fn persist(&mut self) -> Result<(), Error> {
       let bytes: Box<[u8]> = self.inner.clone().try_into()?;
       fs::write(&self.path, bytes)
-        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::FileWritingFailed(e)))
+        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
+    }
+    async fn extract(record: PathBuf) -> Result<Self, Error> {
+      let bytes: Box<[u8]> = fs::read(&record)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
+        .into_boxed_slice();
+      let inner = IdStore::try_from(bytes.as_ref())?;
+      Ok(Self {
+        inner,
+        path: record,
+      })
     }
   }
 
@@ -506,11 +521,8 @@ pub mod file_persistence {
   }
 
   impl FilePreKeyStore {
-    pub fn new<P: AsRef<Path>>(inner: PKStore, path: P) -> Self {
-      Self {
-        inner,
-        path: path.as_ref().to_path_buf(),
-      }
+    pub fn new(inner: PKStore, path: PathBuf) -> Self {
+      Self { inner, path }
     }
   }
 
@@ -542,11 +554,21 @@ pub mod file_persistence {
   }
 
   #[async_trait]
-  impl Persistent for FilePreKeyStore {
+  impl Persistent<PathBuf> for FilePreKeyStore {
     async fn persist(&mut self) -> Result<(), Error> {
       let bytes: Box<[u8]> = self.inner.clone().try_into()?;
       fs::write(&self.path, bytes)
-        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::FileWritingFailed(e)))
+        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
+    }
+    async fn extract(record: PathBuf) -> Result<Self, Error> {
+      let bytes: Box<[u8]> = fs::read(&record)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
+        .into_boxed_slice();
+      let inner = PKStore::try_from(bytes.as_ref())?;
+      Ok(Self {
+        inner,
+        path: record,
+      })
     }
   }
 
@@ -557,11 +579,8 @@ pub mod file_persistence {
   }
 
   impl FileSignedPreKeyStore {
-    pub fn new<P: AsRef<Path>>(inner: SPKStore, path: P) -> Self {
-      Self {
-        inner,
-        path: path.as_ref().to_path_buf(),
-      }
+    pub fn new(inner: SPKStore, path: PathBuf) -> Self {
+      Self { inner, path }
     }
   }
 
@@ -590,11 +609,21 @@ pub mod file_persistence {
   }
 
   #[async_trait]
-  impl Persistent for FileSignedPreKeyStore {
+  impl Persistent<PathBuf> for FileSignedPreKeyStore {
     async fn persist(&mut self) -> Result<(), Error> {
       let bytes: Box<[u8]> = self.inner.clone().try_into()?;
       fs::write(&self.path, bytes)
-        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::FileWritingFailed(e)))
+        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
+    }
+    async fn extract(record: PathBuf) -> Result<Self, Error> {
+      let bytes: Box<[u8]> = fs::read(&record)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
+        .into_boxed_slice();
+      let inner = SPKStore::try_from(bytes.as_ref())?;
+      Ok(Self {
+        inner,
+        path: record,
+      })
     }
   }
 
@@ -605,11 +634,8 @@ pub mod file_persistence {
   }
 
   impl FileSessionStore {
-    pub fn new<P: AsRef<Path>>(inner: SStore, path: P) -> Self {
-      Self {
-        inner,
-        path: path.as_ref().to_path_buf(),
-      }
+    pub fn new(inner: SStore, path: PathBuf) -> Self {
+      Self { inner, path }
     }
   }
 
@@ -634,11 +660,21 @@ pub mod file_persistence {
   }
 
   #[async_trait]
-  impl Persistent for FileSessionStore {
+  impl Persistent<PathBuf> for FileSessionStore {
     async fn persist(&mut self) -> Result<(), Error> {
       let bytes: Box<[u8]> = self.inner.clone().try_into()?;
       fs::write(&self.path, bytes)
-        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::FileWritingFailed(e)))
+        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
+    }
+    async fn extract(record: PathBuf) -> Result<Self, Error> {
+      let bytes: Box<[u8]> = fs::read(&record)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
+        .into_boxed_slice();
+      let inner = SStore::try_from(bytes.as_ref())?;
+      Ok(Self {
+        inner,
+        path: record,
+      })
     }
   }
 
@@ -649,11 +685,8 @@ pub mod file_persistence {
   }
 
   impl FileSenderKeyStore {
-    pub fn new<P: AsRef<Path>>(inner: SKStore, path: P) -> Self {
-      Self {
-        inner,
-        path: path.as_ref().to_path_buf(),
-      }
+    pub fn new(inner: SKStore, path: PathBuf) -> Self {
+      Self { inner, path }
     }
   }
 
@@ -688,19 +721,83 @@ pub mod file_persistence {
   }
 
   #[async_trait]
-  impl Persistent for FileSenderKeyStore {
+  impl Persistent<PathBuf> for FileSenderKeyStore {
     async fn persist(&mut self) -> Result<(), Error> {
       let bytes: Box<[u8]> = self.inner.clone().try_into()?;
       fs::write(&self.path, bytes)
-        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::FileWritingFailed(e)))
+        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
+    }
+    async fn extract(record: PathBuf) -> Result<Self, Error> {
+      let bytes: Box<[u8]> = fs::read(&record)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
+        .into_boxed_slice();
+      let inner = SKStore::try_from(bytes.as_ref())?;
+      Ok(Self {
+        inner,
+        path: record,
+      })
     }
   }
 
   pub type FileStore = super::Store<
+    PathBuf,
     FileSessionStore,
     FilePreKeyStore,
     FileSignedPreKeyStore,
     FileIdStore,
     FileSenderKeyStore,
   >;
+
+  #[derive(Debug, Clone)]
+  pub struct FileStoreRequest {
+    pub session: PathBuf,
+    pub prekey: PathBuf,
+    pub signed_prekey: PathBuf,
+    pub identity: PathBuf,
+    pub sender_key: PathBuf,
+  }
+
+  impl FileStore {
+    pub async fn extract_file_backed_store(request: FileStoreRequest) -> Result<Self, Error> {
+      let FileStoreRequest {
+        session,
+        prekey,
+        signed_prekey,
+        identity,
+        sender_key,
+      } = request;
+      Ok(Store {
+        session_store: FileSessionStore::extract(session).await?,
+        pre_key_store: FilePreKeyStore::extract(prekey).await?,
+        signed_pre_key_store: FileSignedPreKeyStore::extract(signed_prekey).await?,
+        identity_store: FileIdStore::extract(identity).await?,
+        sender_key_store: FileSenderKeyStore::extract(sender_key).await?,
+        _record: PhantomData,
+      })
+    }
+  }
+
+  pub struct DirectoryStoreRequest {
+    pub path: PathBuf,
+  }
+
+  impl DirectoryStoreRequest {
+    pub fn into_layout(self) -> Result<FileStoreRequest, Error> {
+      let DirectoryStoreRequest { path } = self;
+      fs::create_dir_all(&path)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?;
+      let session = path.join(".session");
+      let prekey = path.join(".prekey");
+      let signed_prekey = path.join(".signed_prekey");
+      let identity = path.join(".identity");
+      let sender_key = path.join(".sender_key");
+      Ok(FileStoreRequest {
+        session,
+        prekey,
+        signed_prekey,
+        identity,
+        sender_key,
+      })
+    }
+  }
 }
