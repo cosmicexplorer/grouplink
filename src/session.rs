@@ -5,7 +5,7 @@
 //!
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::{identity::*, session::*};
+//! use grouplink::{identity::*, session::*, store::*};
 //! use grouplink::session::PreKeyBundle;
 //! use libsignal_protocol::*;
 //! use rand::{self, Rng};
@@ -110,6 +110,7 @@ pub mod proto {
 
 use crate::error::{Error, ProtobufCodingFailure};
 use crate::identity::{CryptographicIdentity, ExternalIdentity, Spontaneous};
+use crate::store::Store;
 use crate::util::encode_proto_message;
 
 use libsignal_protocol::{self as signal, IdentityKeyStore, PreKeyStore, SignedPreKeyStore};
@@ -118,23 +119,6 @@ use rand::{self, CryptoRng, Rng};
 
 use std::convert::{TryFrom, TryInto};
 use std::time::SystemTime;
-
-/// ???
-#[derive(Clone)]
-pub struct Store(pub signal::InMemSignalProtocolStore);
-
-fn no_store_creation_error<T>(r: Result<T, signal::SignalProtocolError>) -> T {
-  r.expect("creation of the in-memory signal protocol store should succeed")
-}
-
-impl Store {
-  pub fn new(crypto: CryptographicIdentity) -> Self {
-    let CryptographicIdentity { inner, seed } = crypto;
-    Self(no_store_creation_error(
-      signal::InMemSignalProtocolStore::new(inner, seed),
-    ))
-  }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignedPreKeyRequest {

@@ -343,7 +343,6 @@ dependencies = [
 name = "grouplink"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "bytes",
  "futures",
  "libc",

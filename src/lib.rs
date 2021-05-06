@@ -31,4 +31,5 @@
 pub mod error;
 pub mod identity;
 pub mod session;
+pub mod store;
 mod util;
