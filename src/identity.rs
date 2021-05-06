@@ -7,9 +7,11 @@ pub mod proto {
   include!(concat!(env!("OUT_DIR"), "/grouplink.proto.identity.rs"));
 }
 
-pub use libsignal_protocol as signal;
+use crate::util::encode_proto_message;
+
+use libsignal_protocol as signal;
 use prost::Message;
-pub use rand;
+use rand;
 use rand::{CryptoRng, Rng};
 use uuid::Uuid;
 
@@ -36,16 +38,6 @@ impl Spontaneous<()> for CryptographicIdentity {
     let seed: signal::SessionSeed = csprng.gen::<u32>().into();
     Self { inner, seed }
   }
-}
-
-fn no_encoding_error(r: Result<(), prost::EncodeError>) -> () {
-  r.expect("expect encoding into a vec to never fail")
-}
-
-fn encode_proto_message<M: Message>(m: M) -> Box<[u8]> {
-  let mut serialized = Vec::<u8>::with_capacity(m.encoded_len());
-  no_encoding_error(m.encode(&mut &mut serialized));
-  serialized.into_boxed_slice()
 }
 
 impl From<CryptographicIdentity> for proto::CryptographicIdentity {
@@ -97,140 +89,6 @@ impl From<CryptographicIdentity> for Box<[u8]> {
   fn from(value: CryptographicIdentity) -> Box<[u8]> {
     let proto_message: proto::CryptographicIdentity = value.into();
     encode_proto_message(proto_message)
-  }
-}
-
-/// ???
-///
-///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::identity::*;
-/// use libsignal_protocol::*;
-/// use rand::{self, Rng};
-/// use uuid::Uuid;
-/// use futures::executor::block_on;
-/// use std::convert::{TryFrom, TryInto};
-/// use std::default::Default;
-/// use std::time::{Duration, SystemTime};
-///
-/// // Create a new identity.
-/// let crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let external = ExternalIdentity::generate((), &mut rand::thread_rng());
-/// let alice = Identity { crypto, external: external.clone() };
-/// let alice_address: ProtocolAddress = alice.external.clone().into();
-///
-/// // Create a mutable store.
-/// let mut alice_store = Store::new(alice.crypto);
-///
-/// // Create a destination identity.
-/// let bob_crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let bob_ext = ExternalIdentity::generate((), &mut rand::thread_rng());
-/// let bob = Identity { crypto: bob_crypto, external: bob_ext };
-/// let bob_address: ProtocolAddress = bob.external.clone().into();
-/// let mut bob_store = Store::new(bob.crypto);
-///
-/// // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
-/// let bob_pre_key_pair = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let bob_signed_pre_key_pair = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let bob_pub_signed_prekey: Box<[u8]> = bob_signed_pre_key_pair.inner.public_key().serialize();
-/// let bob_pub_sign = block_on(bob_store.0.get_identity_key_pair(None))?
-///                      .private_key()
-///                      .calculate_signature(&bob_pub_signed_prekey, &mut rand::thread_rng())?;
-///
-/// let pre_key_id: PreKeyId = Box::new(&mut rand::thread_rng()).gen::<u32>().into();
-/// let signed_pre_key_id: SignedPreKeyId = Box::new(&mut rand::thread_rng()).gen::<u32>().into();
-/// let bob_pre_key_bundle = PreKeyBundle::new(
-///   block_on(bob_store.0.get_local_registration_id(None))?.into(),
-///   bob.external.device_id.into(),
-///   Some((pre_key_id.into(), *bob_pre_key_pair.inner.public_key())),
-///   signed_pre_key_id.into(),
-///   *bob_signed_pre_key_pair.inner.public_key(),
-///   bob_pub_sign.to_vec(),
-///   *block_on(bob_store.0.get_identity_key_pair(None))?.identity_key(),
-/// )?;
-/// block_on(process_prekey_bundle(&bob_address,
-///                                &mut alice_store.0.session_store,
-///                                &mut alice_store.0.identity_store,
-///                                &bob_pre_key_bundle,
-///                                &mut rand::thread_rng(),
-///                                None,
-/// ))?;
-///
-/// // Encrypt a sealed-sender message.
-/// let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
-/// let outgoing_message: CiphertextMessage = block_on(message_encrypt(
-///   ptext.as_ref(),
-///   &bob_address,
-///   &mut alice_store.0.session_store, &mut alice_store.0.identity_store,
-///   None,
-/// ))?;
-/// let incoming_message = CiphertextMessage::PreKeySignalMessage(
-///   PreKeySignalMessage::try_from(outgoing_message.serialize())?,
-/// );
-///
-/// // Save a pre-key.
-/// let pre_key_record = PreKeyRecord::new(pre_key_id.into(),
-///                                        &bob_pre_key_pair.inner.clone().into());
-/// block_on(bob_store.0.save_pre_key(pre_key_id.into(), &pre_key_record, None))?;
-///
-/// let timestamp: u64 = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-/// let signed_pre_key_record = SignedPreKeyRecord::new(signed_pre_key_id.into(),
-///                                                     timestamp,
-///                                                     &bob_signed_pre_key_pair.inner.clone().into(),
-///                                                     &bob_pub_sign);
-/// block_on(bob_store.0.save_signed_pre_key(signed_pre_key_id.into(), &signed_pre_key_record, None))?;
-///
-/// /// Decrypt the ciphertext.
-/// let decrypted: Box<[u8]> = block_on(message_decrypt(
-///   &incoming_message,
-///   &alice_address,
-///   &mut bob_store.0.session_store, &mut bob_store.0.identity_store,
-///   &mut bob_store.0.pre_key_store, &mut bob_store.0.signed_pre_key_store,
-///   &mut rand::thread_rng(),
-///   None,
-/// ))?.into_boxed_slice();
-///
-/// assert!(decrypted.as_ref() == ptext.as_ref());
-/// assert!("asdf" == std::str::from_utf8(decrypted.as_ref()).unwrap());
-///
-/// // Respond, as Bob.
-/// let bobs_response = "oh ok";
-/// let bobs_session_with_alice = block_on(bob_store.0.load_session(&alice_address, None))?;
-///
-/// let bob_outgoing = block_on(message_encrypt(
-///   bobs_response.as_bytes(),
-///   &alice_address,
-///   &mut bob_store.0.session_store, &mut bob_store.0.identity_store,
-///   None,
-/// ))?;
-/// let alice_incoming = block_on(message_decrypt(
-///   &bob_outgoing,
-///   &bob_address,
-///   &mut alice_store.0.session_store, &mut alice_store.0.identity_store,
-///   &mut alice_store.0.pre_key_store, &mut alice_store.0.signed_pre_key_store,
-///   &mut rand::thread_rng(),
-///   None,
-/// ))?;
-///
-/// assert!(&alice_incoming[..] == bobs_response.as_bytes());
-/// assert!("oh ok" == std::str::from_utf8(alice_incoming.as_ref()).unwrap());
-///
-/// # Ok(())
-/// # }
-///```
-#[derive(Clone)]
-pub struct Store(pub signal::InMemSignalProtocolStore);
-
-fn no_store_creation_error<T>(r: Result<T, signal::SignalProtocolError>) -> T {
-  r.expect("creation of the in-memory signal protocol store should succeed")
-}
-
-impl Store {
-  pub fn new(crypto: CryptographicIdentity) -> Self {
-    let CryptographicIdentity { inner, seed } = crypto;
-    Self(no_store_creation_error(
-      signal::InMemSignalProtocolStore::new(inner, seed),
-    ))
   }
 }
 

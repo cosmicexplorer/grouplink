@@ -1,0 +1,18 @@
+syntax = "proto2";
+
+/* Copyright 2021 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+package grouplink.proto.session;
+
+import "identity.proto";
+
+message SessionInitiatingMessageRequest {
+  optional grouplink.proto.identity.Address sender = 1;
+  optional bytes encrypted_pre_key_message         = 2;
+}
+
+message FollowUpMessage {
+  optional grouplink.proto.identity.Address sender = 1;
+  optional bytes encrypted_signal_message          = 2;
+}
