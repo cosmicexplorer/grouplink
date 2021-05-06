@@ -7,6 +7,7 @@ package grouplink.proto.session;
 
 import "identity.proto";
 
+/* Signal doesn't appear to have this entire structure in a single place, so we recreate it here. */
 message PreKeyBundle {
   optional grouplink.proto.identity.Address destination = 1;
   optional uint32 registration_id                       = 2;
@@ -20,11 +21,9 @@ message PreKeyBundle {
 }
 
 message SessionInitiatingMessageRequest {
-  optional grouplink.proto.identity.Address sender = 1;
-  optional bytes encrypted_pre_key_message         = 2;
+  optional bytes encrypted_pre_key_message = 1;
 }
 
 message FollowUpMessage {
-  optional grouplink.proto.identity.Address sender = 1;
-  optional bytes encrypted_signal_message          = 2;
+  optional bytes encrypted_signal_message = 1;
 }
