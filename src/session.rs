@@ -32,6 +32,8 @@
 //!
 //! // Create a destination identity.
 //! let bob = Identity::generate((), &mut rand::thread_rng());
+//! let bob_sealed = SealedSenderIdentity::generate(bob.external.clone(),
+//!                                                 &mut rand::thread_rng());
 //! let bob_address: ProtocolAddress = bob.external.clone().into();
 //! let bob_store_request = DirectoryStoreRequest {
 //!   path: PathBuf::from("/home/cosmicexplorer/bob"),
@@ -67,42 +69,97 @@
 //! let decoded_pre_key_bundle = PreKeyBundle::try_from(encoded_pre_key_bundle.as_ref())?;
 //! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
 //!
+//! // SEALED SENDER STUFF!
+//!
+//! let trust_root = KeyPair::generate(&mut rand::thread_rng());
+//! let server_key = KeyPair::generate(&mut rand::thread_rng());
+//!
+//! let server_cert =
+//!     ServerCertificate::new(1, server_key.public_key, &trust_root.private_key,
+//!                            &mut rand::thread_rng())?;
+//!
+//! // Very far in the future.
+//! let expires = 2605722925;
+//!
+//! let sender_cert = SenderCertificate::new(
+//!     alice.external.name.clone(),
+//!     None,
+//!     *alice.crypto.inner.public_key(),
+//!     alice.external.device_id,
+//!     expires,
+//!     server_cert,
+//!     &server_key.private_key,
+//!     &mut rand::thread_rng(),
+//! )?;
+//! let sender_cert = SenderCert { inner: sender_cert, trust_root: trust_root.public_key };
+//!
 //! let initial_message =
-//!   block_on(InitialOutwardMessage::intern(
-//!              InitialOutwardMessageRequest {
+//!   block_on(SealedSenderMessage::intern(
+//!              SealedSenderMessageRequest {
 //!                bundle: decoded_pre_key_bundle,
-//!                plaintext: &ptext,
+//!                sender_cert,
+//!                ptext: &ptext,
 //!              },
 //!              &mut alice_store.session_store,
 //!              &mut alice_store.identity_store,
-//!              &mut rand::thread_rng()))?;
-//! let session_request = SessionInitiatingMessageRequest {
-//!                         sender: alice.external.clone(),
-//!                         outward: initial_message,
-//!                       };
-//! let encoded_session_initiation_request: Box<[u8]> = session_request.into();
+//!              &mut rand::thread_rng(),
+//!   ))?;
+//! let encoded_sealed_sender_message: Box<[u8]> = initial_message.into();
 //!
-//! // Decrypt the ciphertext.
-//! let decoded_session_initiation_request =
-//!   SessionInitiatingMessageRequest::try_from(encoded_session_initiation_request.as_ref())?;
-//! let session_initial_message =
-//!   block_on(SessionInitiatingMessage::intern(decoded_session_initiation_request,
-//!                                             &mut bob_store.session_store,
-//!                                             &mut bob_store.identity_store,
-//!                                             &mut bob_store.pre_key_store,
-//!                                             &mut bob_store.signed_pre_key_store,
-//!                                             &mut rand::thread_rng(),
-//!                                        ))?;
+//! // let initial_message =
+//! //   block_on(InitialOutwardMessage::intern(
+//! //              InitialOutwardMessageRequest {
+//! //                bundle: decoded_pre_key_bundle,
+//! //                plaintext: &ptext,
+//! //              },
+//! //              &mut alice_store.session_store,
+//! //              &mut alice_store.identity_store,
+//! //              &mut rand::thread_rng()))?;
+//! // let session_request = SessionInitiatingMessageRequest {
+//! //                         sender: alice.external.clone(),
+//! //                         outward: initial_message,
+//! //                       };
+//! // let encoded_session_initiation_request: Box<[u8]> = session_request.into();
 //!
-//! assert!(session_initial_message.plaintext.as_ref() == ptext.as_ref());
-//! assert!("asdf" == std::str::from_utf8(session_initial_message.plaintext.as_ref()).unwrap());
+//! // Decrypt the sealed-sender message.
+//! let decoded_sealed_sender_message =
+//!   SealedSenderMessage::try_from(encoded_sealed_sender_message.as_ref())?;
+//! let message_result =
+//!   block_on(SealedSenderMessageResult::intern(
+//!              SealedSenderDecryptionRequest {
+//!                inner: decoded_sealed_sender_message,
+//!                local_identity: bob_sealed,
+//!              },
+//!              &mut bob_store.identity_store,
+//!              &mut bob_store.session_store,
+//!              &mut bob_store.pre_key_store,
+//!              &mut bob_store.signed_pre_key_store,
+//!   ))?;
+//!
+//! assert!(message_result.plaintext.as_ref() == ptext.as_ref());
+//! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
+//!
+//! // // Decrypt the ciphertext.
+//! // let decoded_session_initiation_request =
+//! //   SessionInitiatingMessageRequest::try_from(encoded_session_initiation_request.as_ref())?;
+//! // let session_initial_message =
+//! //   block_on(SessionInitiatingMessage::intern(decoded_session_initiation_request,
+//! //                                             &mut bob_store.session_store,
+//! //                                             &mut bob_store.identity_store,
+//! //                                             &mut bob_store.pre_key_store,
+//! //                                             &mut bob_store.signed_pre_key_store,
+//! //                                             &mut rand::thread_rng(),
+//! //                                        ))?;
+//! //
+//! // assert!(session_initial_message.plaintext.as_ref() == ptext.as_ref());
+//! // assert!("asdf" == std::str::from_utf8(session_initial_message.plaintext.as_ref()).unwrap());
 //!
 //! //?
 //! let bob_text = "oh ok";
 //! let bob_follow_up =
 //!   block_on(FollowUpMessage::intern(
 //!              FollowUpMessageRequest {
-//!                target: alice.external.clone(),
+//!                target: message_result.sender.inner,
 //!                sender: bob.external.clone(),
 //!                plaintext: bob_text.as_bytes(),
 //!              },
@@ -793,8 +850,14 @@ pub mod address_encrypted {
       csprng: &mut R,
     ) -> Result<Self, Error> {
       let SealedSenderMessageRequest {
-        bundle: PreKeyBundle { destination, inner },
-        sender_cert,
+        bundle: PreKeyBundle {
+          destination,
+          inner: bundle,
+        },
+        sender_cert: SenderCert {
+          inner: sender_cert,
+          trust_root,
+        },
         ptext,
       } = request;
 
@@ -802,7 +865,7 @@ pub mod address_encrypted {
         &destination.clone().into(),
         session_store,
         id_store,
-        &inner,
+        &bundle,
         csprng,
         None,
       )
@@ -810,10 +873,9 @@ pub mod address_encrypted {
       session_store.persist().await?;
       id_store.persist().await?;
 
-      let trust_root = sender_cert.trust_root();
       let encrypted_message = signal::sealed_sender_encrypt(
         &destination.clone().into(),
-        &sender_cert.into(),
+        &sender_cert,
         ptext,
         session_store,
         id_store,
@@ -935,8 +997,8 @@ pub mod address_encrypted {
       let signal::SealedSenderDecryptionResult {
         sender_uuid,
         sender_e164,
-        device_id,
-        message,
+        device_id: sender_device_id,
+        message: plaintext,
       } = signal::sealed_sender_decrypt(
         encrypted_message.as_ref(),
         &trust_root,
@@ -959,13 +1021,13 @@ pub mod address_encrypted {
       let sender = SealedSenderIdentity {
         inner: ExternalIdentity {
           name: sender_uuid,
-          device_id,
+          device_id: sender_device_id,
         },
         e164: sender_e164,
       };
       Ok(Self {
         sender,
-        plaintext: message.into_boxed_slice(),
+        plaintext: plaintext.into_boxed_slice(),
       })
     }
   }

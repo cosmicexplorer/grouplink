@@ -300,27 +300,6 @@ impl fmt::Display for Identity {
 }
 
 #[derive(Debug, Clone)]
-pub struct ServerCert {}
-
-impl ServerCert {
-  pub fn public_key(&self) -> &signal::PublicKey {
-    todo!()
-  }
-}
-
-impl From<ServerCert> for signal::ServerCertificate {
-  fn from(_value: ServerCert) -> Self {
-    todo!()
-  }
-}
-
-impl From<signal::ServerCertificate> for ServerCert {
-  fn from(_value: signal::ServerCertificate) -> Self {
-    todo!()
-  }
-}
-
-#[derive(Debug, Clone)]
 pub struct SealedSenderIdentity {
   pub inner: ExternalIdentity,
   pub e164: Option<String>,
@@ -345,24 +324,13 @@ impl Spontaneous<()> for SealedSenderIdentity {
 }
 
 #[derive(Debug, Clone)]
+pub struct ServerCert {
+  pub inner: signal::ServerCertificate,
+  pub trust_root: signal::PublicKey,
+}
+
+#[derive(Debug, Clone)]
 pub struct SenderCert {
-  pub signer: ServerCert,
-}
-
-impl SenderCert {
-  pub fn trust_root(&self) -> signal::PublicKey {
-    *self.signer.public_key()
-  }
-}
-
-impl From<SenderCert> for signal::SenderCertificate {
-  fn from(_value: SenderCert) -> Self {
-    todo!()
-  }
-}
-
-impl From<signal::SenderCertificate> for SenderCert {
-  fn from(_value: signal::SenderCertificate) -> Self {
-    todo!()
-  }
+  pub inner: signal::SenderCertificate,
+  pub trust_root: signal::PublicKey,
 }
