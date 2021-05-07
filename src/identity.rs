@@ -298,3 +298,71 @@ impl fmt::Display for Identity {
     write!(f, "Identity {{ external={}, crypto=<...> }}", self.external)
   }
 }
+
+#[derive(Debug, Clone)]
+pub struct ServerCert {}
+
+impl ServerCert {
+  pub fn public_key(&self) -> &signal::PublicKey {
+    todo!()
+  }
+}
+
+impl From<ServerCert> for signal::ServerCertificate {
+  fn from(_value: ServerCert) -> Self {
+    todo!()
+  }
+}
+
+impl From<signal::ServerCertificate> for ServerCert {
+  fn from(_value: signal::ServerCertificate) -> Self {
+    todo!()
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct SealedSenderIdentity {
+  pub inner: ExternalIdentity,
+  pub e164: Option<String>,
+}
+
+impl Spontaneous<ExternalIdentity> for SealedSenderIdentity {
+  fn generate<R: CryptoRng + Rng>(params: ExternalIdentity, csprng: &mut R) -> Self {
+    let random_e164_bytes: [u8; 16] = csprng.gen();
+    let random_e164: Uuid = Uuid::from_bytes(random_e164_bytes);
+    Self {
+      inner: params,
+      e164: Some(random_e164.to_string()),
+    }
+  }
+}
+
+impl Spontaneous<()> for SealedSenderIdentity {
+  fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
+    let ext = ExternalIdentity::generate((), csprng);
+    Self::generate(ext, csprng)
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct SenderCert {
+  pub signer: ServerCert,
+}
+
+impl SenderCert {
+  pub fn trust_root(&self) -> signal::PublicKey {
+    *self.signer.public_key()
+  }
+}
+
+impl From<SenderCert> for signal::SenderCertificate {
+  fn from(_value: SenderCert) -> Self {
+    todo!()
+  }
+}
+
+impl From<signal::SenderCertificate> for SenderCert {
+  fn from(_value: signal::SenderCertificate) -> Self {
+    todo!()
+  }
+}

@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+/* Copyright 2021 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+package grouplink.proto.message;
+
+import "session.proto";
+
+message Message {
+  oneof type {
+    // Exposes the sender's address.
+    grouplink.proto.session.PreKeyBundle bundle                     = 1;
+    // Exposes the sender's address.
+    grouplink.proto.session.SessionInitiatingMessageRequest initial = 2;
+    // Exposes the sender's address.
+    grouplink.proto.session.FollowUpMessage follow_up               = 3;
+  }
+}
