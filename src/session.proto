@@ -21,9 +21,11 @@ message PreKeyBundle {
 }
 
 message SessionInitiatingMessageRequest {
-  optional bytes encrypted_pre_key_message = 1;
+  optional grouplink.proto.identity.Address sender = 1;
+  optional bytes encrypted_pre_key_message         = 2;
 }
 
 message FollowUpMessage {
-  optional bytes encrypted_signal_message = 1;
+  optional grouplink.proto.identity.Address sender = 1;
+  optional bytes encrypted_signal_message          = 2;
 }

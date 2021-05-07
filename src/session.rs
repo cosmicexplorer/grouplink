@@ -76,6 +76,7 @@
 //!
 //! // Decrypt the ciphertext.
 //! let session_request = SessionInitiatingMessageRequest {
+//!                         sender: alice.external.clone(),
 //!                         outward: initial_message,
 //!                       };
 //! let encoded_session_initiation_request: Box<[u8]> = session_request.into();
@@ -83,7 +84,6 @@
 //!   SessionInitiatingMessageRequest::try_from(encoded_session_initiation_request.as_ref())?;
 //! let session_initial_message =
 //!   block_on(SessionInitiatingMessage::intern(decoded_session_initiation_request,
-//!                                             alice.external.clone(),
 //!                                             &mut bob_store.session_store,
 //!                                             &mut bob_store.identity_store,
 //!                                             &mut bob_store.pre_key_store,
@@ -100,6 +100,7 @@
 //!   block_on(FollowUpMessage::intern(
 //!              FollowUpMessageRequest {
 //!                target: alice.external.clone(),
+//!                sender: bob.external.clone(),
 //!                plaintext: bob_text.as_bytes(),
 //!              },
 //!              &mut bob_store.session_store,
@@ -109,7 +110,6 @@
 //!   FollowUpMessage::try_from(encoded_follow_up_message.as_ref())?;
 //! let alice_incoming = block_on(DecryptedMessage::intern(
 //!   decoded_follow_up_message,
-//!   bob.external.clone(),
 //!   &mut alice_store.session_store,
 //!   &mut alice_store.identity_store,
 //!   &mut alice_store.pre_key_store,
@@ -480,6 +480,7 @@ impl InitialOutwardMessage {
 
 #[derive(Debug, Clone)]
 pub struct SessionInitiatingMessageRequest {
+  pub sender: ExternalIdentity,
   pub outward: InitialOutwardMessage,
 }
 
@@ -489,8 +490,10 @@ impl From<SessionInitiatingMessageRequest> for proto::SessionInitiatingMessageRe
       outward: InitialOutwardMessage {
         inner: signal_pre_key_message,
       },
+      sender,
     } = value;
     proto::SessionInitiatingMessageRequest {
+      sender: Some(sender.into()),
       encrypted_pre_key_message: Some(signal_pre_key_message.as_ref().to_vec()),
     }
   }
@@ -507,8 +510,16 @@ impl TryFrom<proto::SessionInitiatingMessageRequest> for SessionInitiatingMessag
   type Error = Error;
   fn try_from(value: proto::SessionInitiatingMessageRequest) -> Result<Self, Error> {
     let proto::SessionInitiatingMessageRequest {
+      sender,
       encrypted_pre_key_message,
     } = value;
+    let sender: ExternalIdentity = sender
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `sender` field!"
+        )))
+      })?
+      .try_into()?;
     let encoded_pre_key_message: Vec<u8> = encrypted_pre_key_message.ok_or_else(|| {
       Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
         "failed to find `encrypted_pre_key_message` field!"
@@ -517,6 +528,7 @@ impl TryFrom<proto::SessionInitiatingMessageRequest> for SessionInitiatingMessag
     let decoded_pre_key_message =
       signal::PreKeySignalMessage::try_from(encoded_pre_key_message.as_ref())?;
     Ok(Self {
+      sender,
       outward: InitialOutwardMessage {
         inner: decoded_pre_key_message,
       },
@@ -547,7 +559,6 @@ impl SessionInitiatingMessage {
     R: Rng + CryptoRng,
   >(
     request: SessionInitiatingMessageRequest,
-    sender: ExternalIdentity,
     session_store: &mut S,
     id_store: &mut ID,
     prekey_store: &mut PK,
@@ -556,6 +567,7 @@ impl SessionInitiatingMessage {
   ) -> Result<Self, Error> {
     let SessionInitiatingMessageRequest {
       outward: InitialOutwardMessage { inner },
+      sender,
     } = request;
     let decrypted: Box<[u8]> = signal::message_decrypt(
       &signal::CiphertextMessage::PreKeySignalMessage(inner),
@@ -582,10 +594,13 @@ impl SessionInitiatingMessage {
 #[derive(Debug, Clone)]
 pub struct FollowUpMessageRequest<'a> {
   pub target: ExternalIdentity,
+  pub sender: ExternalIdentity,
   pub plaintext: &'a [u8],
 }
 
+#[derive(Debug, Clone)]
 pub struct FollowUpMessage {
+  pub sender: ExternalIdentity,
   pub inner: signal::SignalMessage,
 }
 
@@ -600,13 +615,17 @@ impl FollowUpMessage {
     session_store: &mut S,
     id_store: &mut ID,
   ) -> Result<Self, Error> {
-    let FollowUpMessageRequest { target, plaintext } = request;
+    let FollowUpMessageRequest {
+      target,
+      plaintext,
+      sender,
+    } = request;
     let inner =
       signal::message_encrypt(plaintext, &target.into(), session_store, id_store, None).await?;
     session_store.persist().await?;
     id_store.persist().await?;
     match inner {
-      signal::CiphertextMessage::SignalMessage(inner) => Ok(Self { inner }),
+      signal::CiphertextMessage::SignalMessage(inner) => Ok(Self { inner, sender }),
       x => unreachable!("expected the result of signal::message_encrypt() to return a normal message, but was: {:?}", x.message_type())
     }
   }
@@ -614,8 +633,9 @@ impl FollowUpMessage {
 
 impl From<FollowUpMessage> for proto::FollowUpMessage {
   fn from(value: FollowUpMessage) -> Self {
-    let FollowUpMessage { inner } = value;
+    let FollowUpMessage { inner, sender } = value;
     proto::FollowUpMessage {
+      sender: Some(sender.into()),
       encrypted_signal_message: Some(inner.as_ref().to_vec()),
     }
   }
@@ -632,8 +652,16 @@ impl TryFrom<proto::FollowUpMessage> for FollowUpMessage {
   type Error = Error;
   fn try_from(value: proto::FollowUpMessage) -> Result<Self, Error> {
     let proto::FollowUpMessage {
+      sender,
       encrypted_signal_message,
     } = value;
+    let sender: ExternalIdentity = sender
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
+          "failed to find `sender` field!"
+        )))
+      })?
+      .try_into()?;
     let encoded_signal_message: Vec<u8> = encrypted_signal_message.ok_or_else(|| {
       Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
         "failed to find `encrypted_signal_message` field!"
@@ -641,6 +669,7 @@ impl TryFrom<proto::FollowUpMessage> for FollowUpMessage {
     })?;
     let decoded_signal_message = signal::SignalMessage::try_from(encoded_signal_message.as_ref())?;
     Ok(Self {
+      sender,
       inner: decoded_signal_message,
     })
   }
@@ -669,14 +698,13 @@ impl DecryptedMessage {
     R: Rng + CryptoRng,
   >(
     request: FollowUpMessage,
-    sender: ExternalIdentity,
     session_store: &mut S,
     id_store: &mut ID,
     prekey_store: &mut PK,
     signed_prekey_store: &mut SPK,
     csprng: &mut R,
   ) -> Result<Self, Error> {
-    let FollowUpMessage { inner } = request;
+    let FollowUpMessage { inner, sender } = request;
     let decrypted: Box<[u8]> = signal::message_decrypt(
       &signal::CiphertextMessage::SignalMessage(inner),
       &sender.clone().into(),
