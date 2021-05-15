@@ -555,7 +555,7 @@ checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 [[package]]
 name = "libsignal-protocol"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=4f7c3bcae6d52f41110fb41238e9a381d107c8dd#4f7c3bcae6d52f41110fb41238e9a381d107c8dd"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=6b667286f801b12855c42ffadb7377922b4fc1b5#6b667286f801b12855c42ffadb7377922b4fc1b5"
 dependencies = [
  "aes",
  "arrayref",
@@ -1091,7 +1091,7 @@ dependencies = [
 [[package]]
 name = "signal-crypto"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=4f7c3bcae6d52f41110fb41238e9a381d107c8dd#4f7c3bcae6d52f41110fb41238e9a381d107c8dd"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=6b667286f801b12855c42ffadb7377922b4fc1b5#6b667286f801b12855c42ffadb7377922b4fc1b5"
 dependencies = [
  "aes-soft",
  "aesni",

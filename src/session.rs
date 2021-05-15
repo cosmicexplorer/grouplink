@@ -570,6 +570,26 @@ impl TryFrom<&[u8]> for PreKeyBundle {
   }
 }
 
+/// Specify the parameters to create a new [SealedSenderMessage] to **securely transfer the identity
+/// of [Self::bundle] to another user.**
+///
+/// This concept does not exist in the base [libsignal_protocol] crate's "sealed sender" messages or
+/// in its [libsignal_protocol::CiphertextMessageType] because the Signal client app's HTTPS
+/// transport security with the Signal backend server is used to perform this particular encryption.
+///
+/// For the [grouplink protocol](crate), we want to be able to encrypt this message as a uniform
+/// serializable [SealedSenderMessage] instance in a way that the target user can asynchronously
+/// decrypt and read. *See [SealedSenderMessage::intern_pre_key_bundle].*
+#[derive(Debug, Clone)]
+pub struct SealedSenderPreKeyBundleRequest {
+  /// Gets directly encoded into [SealedSenderMessageRequest::bundle] (after being encrypted in
+  /// transit).
+  pub bundle: PreKeyBundle,
+  /// Newly generated certificate with cryptographic information to encrypt this message's sender.
+  pub sender_cert: SenderCert,
+  pub destination: ExternalIdentity,
+}
+
 /// Specify the parameters to create a new [SealedSenderMessage] **to kick off a new
 /// message chain.**
 ///
@@ -578,7 +598,9 @@ impl TryFrom<&[u8]> for PreKeyBundle {
 #[derive(Debug, Clone)]
 pub struct SealedSenderMessageRequest<'a> {
   /// Bundle for the recipient to then [PreKeyBundle::process] to **create a new message chain from
-  /// a completed [X3DH] key agreement.** Contains the [PreKeyBundle::destination] to send to.
+  /// a completed [X3DH] key agreement.**
+  ///
+  /// Contains the [PreKeyBundle::destination] to send to.
   ///
   /// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
   pub bundle: PreKeyBundle,
@@ -625,6 +647,51 @@ impl PartialEq for SealedSenderMessage {
 impl Eq for SealedSenderMessage {}
 
 impl SealedSenderMessage {
+  /// Mutate `session_store` and `id_store` to **decrypt a sealed-sender message which produces
+  /// a new [PreKeyBundle].**
+  ///
+  /// Used in [encrypt_pre_key_bundle_message].
+  pub async fn intern_pre_key_bundle<
+    Record,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
+    R: CryptoRng + Rng,
+  >(
+    request: SealedSenderPreKeyBundleRequest,
+    id_store: &mut ID,
+    csprng: &mut R,
+  ) -> Result<Self, Error> {
+    let SealedSenderPreKeyBundleRequest {
+      bundle,
+      sender_cert: SenderCert {
+        inner: sender_cert,
+        trust_root,
+      },
+      destination,
+    } = request;
+
+    let dest: signal::ProtocolAddress = destination.into();
+    let encoded_bundle: Box<[u8]> = bundle.try_into()?;
+
+    let usmc = signal::UnidentifiedSenderMessageContent::new(
+      signal::CiphertextMessageType::EncryptedPreKeyBundle,
+      sender_cert,
+      signal::encrypt_pre_key_bundle_message(&dest, encoded_bundle.into_vec(), id_store, csprng)
+        .await?,
+      signal::ContentHint::Default,
+      None,
+    )?;
+    let encrypted_message =
+      signal::sealed_sender_multi_recipient_encrypt(&[&dest], &usmc, id_store, None, csprng)
+        .await?
+        .into_boxed_slice();
+    id_store.persist().await?;
+
+    Ok(Self {
+      trust_root,
+      encrypted_message,
+    })
+  }
+
   /// Mutate `session_store` and `id_store` to **register a sealed-sender message for a new
   /// message chain** with the underlying [libsignal_protocol] crate.
   ///
@@ -707,6 +774,29 @@ impl SealedSenderMessage {
       encrypted_message,
     })
   }
+}
+
+/// ???
+///
+///```
+///```
+pub async fn encrypt_pre_key_bundle_message<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  req: SealedSenderPreKeyBundleRequest,
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<SealedSenderMessage, Error> {
+  SealedSenderMessage::intern_pre_key_bundle::<Record, ID, _>(
+    req,
+    &mut store.identity_store,
+    &mut rand::thread_rng(),
+  )
+  .await
 }
 
 /// Encrypt a [SealedSenderMessage] by invoking [PreKeyBundle::process]. **This will kick off
@@ -978,6 +1068,72 @@ pub struct SealedSenderMessageResult {
 }
 
 impl SealedSenderMessageResult {
+  async fn intern_pre_key_bundle<
+    Record,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
+    S: signal::SessionStore + Persistent<Record>,
+    PK: signal::PreKeyStore + Persistent<Record>,
+    SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  >(
+    message: SealedSenderDecryptionRequest,
+    id_store: &mut ID,
+    session_store: &mut S,
+    pre_key_store: &mut PK,
+    signed_pre_key_store: &mut SPK,
+  ) -> Result<Self, Error> {
+    let SealedSenderDecryptionRequest {
+      inner: SealedSenderMessage {
+        trust_root,
+        encrypted_message,
+      },
+      local_identity:
+        SealedSenderIdentity {
+          inner:
+            ExternalIdentity {
+              name: local_uuid,
+              device_id: local_device_id,
+            },
+          e164: local_e164,
+        },
+    } = message;
+
+    let signal::SealedSenderDecryptionResult {
+      sender_uuid,
+      sender_e164,
+      device_id: sender_device_id,
+      message: plaintext,
+    } = signal::sealed_sender_decrypt(
+      encrypted_message.as_ref(),
+      &trust_root,
+      get_timestamp(),
+      local_e164,
+      local_uuid,
+      local_device_id.into(),
+      id_store,
+      session_store,
+      pre_key_store,
+      signed_pre_key_store,
+      None,
+    )
+    .await?;
+    id_store.persist().await?;
+    session_store.persist().await?;
+    pre_key_store.persist().await?;
+    signed_pre_key_store.persist().await?;
+
+    let sender = SealedSenderIdentity {
+      inner: ExternalIdentity {
+        name: sender_uuid,
+        device_id: sender_device_id.into(),
+      },
+      e164: sender_e164,
+    };
+    Ok(Self {
+      sender,
+      plaintext: plaintext.into_boxed_slice(),
+    })
+  }
+
   /// Mutate `id_store`, `session_store`, `pre_key_store`, and `signed_pre_key_store` to to decrypt
   /// `message`.
   ///
@@ -1047,6 +1203,27 @@ impl SealedSenderMessageResult {
       plaintext: plaintext.into_boxed_slice(),
     })
   }
+}
+
+pub async fn decrypt_pre_key_message<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  req: SealedSenderDecryptionRequest,
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<SealedSenderMessageResult, Error> {
+  SealedSenderMessageResult::intern_pre_key_bundle(
+    req,
+    &mut store.identity_store,
+    &mut store.session_store,
+    &mut store.pre_key_store,
+    &mut store.signed_pre_key_store,
+  )
+  .await
 }
 
 /// Decrypt a [SealedSenderMessage]. **This will use an existing message chain.**

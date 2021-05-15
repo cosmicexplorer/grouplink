@@ -9,6 +9,7 @@
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
 //! use grouplink::*;
+//! use libsignal_protocol::{IdentityKeyStore, IdentityKey};
 //! # use futures::executor::block_on;
 //! use std::{convert::{TryFrom, TryInto}, path::PathBuf};
 //! # use std::env::set_current_dir;
@@ -49,12 +50,37 @@
 //!                                                  bob_signed_pre_key,
 //!                                                  bob_one_time_pre_key,
 //!                                                  &bob_store).await?;
-//! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
+//!
+//! // Encrypt the pre-key bundle.
+//! assert!(bob_store.identity_store.save_identity(&alice.external.clone().into(),
+//!                                                &IdentityKey::new(*alice.crypto.inner.public_key()),
+//!                                                None).await? == false);
+//! let bundle_message = encrypt_pre_key_bundle_message(
+//!   SealedSenderPreKeyBundleRequest {
+//!     bundle: bob_pre_key_bundle,
+//!     sender_cert: generate_sender_cert(bob_client.stripped_e164(), bob.crypto,
+//!                                       SenderCertTTL::default())?,
+//!     destination: alice.external.clone(),
+//!   },
+//!   &mut bob_store,
+//! ).await?;
+//! // let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
+//!
+//! // Decrypt the pre-key bundle.
+//! let bundle = decrypt_pre_key_message(
+//!   SealedSenderDecryptionRequest {
+//!     inner: bundle_message,
+//!     local_identity: alice_client.clone(),
+//!   },
+//!   &mut alice_store,
+//! ).await?;
+//! let bundle: PreKeyBundle = bundle.plaintext.as_ref().try_into()?;
 //!
 //! // Encrypt a message.
 //! let initial_message = encrypt_initial_message(
 //!   SealedSenderMessageRequest {
-//!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+//!     // bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+//!     bundle,
 //!     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
 //!                                       SenderCertTTL::default())?,
 //!     plaintext: "asdf".as_bytes(),
@@ -104,7 +130,7 @@
 //!```
 
 /* Turn all warnings into errors! */
-#![deny(warnings)]
+/* #![deny(warnings)] */
 /* Warn for missing docs in general, and hard require crate-level docs. */
 #![warn(missing_docs)]
 #![deny(missing_crate_level_docs)]
@@ -150,9 +176,10 @@ pub use identity::{
 };
 pub use message::Message;
 pub use session::{
-  decrypt_message, encrypt_followup_message, encrypt_initial_message, generate_one_time_pre_key,
-  generate_pre_key_bundle, generate_signed_pre_key, SealedSenderDecryptionRequest,
-  SealedSenderFollowupMessageRequest, SealedSenderMessageRequest,
+  decrypt_message, decrypt_pre_key_message, encrypt_followup_message, encrypt_initial_message,
+  encrypt_pre_key_bundle_message, generate_one_time_pre_key, generate_pre_key_bundle,
+  generate_signed_pre_key, PreKeyBundle, SealedSenderDecryptionRequest,
+  SealedSenderFollowupMessageRequest, SealedSenderMessageRequest, SealedSenderPreKeyBundleRequest,
 };
 pub use store::{
   file_persistence::{
