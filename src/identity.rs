@@ -431,7 +431,7 @@ pub fn generate_sender_cert(
       external.name.clone(),
       e164,
       *crypto.inner.public_key(),
-      external.device_id,
+      external.device_id.into(),
       ttl.calculate_expires_timestamp()?,
       inner,
       &server_key.private_key,

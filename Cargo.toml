@@ -8,7 +8,7 @@ license = "AGPL-3.0-only"
 [dependencies]
 async-trait = "0.1.41"
 libc = "0.2.94"
-libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "aee6669579d6bd9d56a0792c0d3ed0e1302d3cca" }
+libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "4b74f82b7b5a4e00105ff687f8d76c00fb199809" }
 rand = "0.7"
 prost = "0.7"
 bytes = "1"
@@ -23,3 +23,4 @@ prost-build = "0.7"
 [dev-dependencies]
 futures = "0.3.7"
 proptest = "1.0.0"
+color-eyre = "0.5"

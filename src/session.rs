@@ -662,7 +662,7 @@ impl SealedSenderMessageResult {
       get_timestamp(),
       local_e164,
       local_uuid,
-      local_device_id,
+      local_device_id.into(),
       id_store,
       session_store,
       pre_key_store,
@@ -678,7 +678,7 @@ impl SealedSenderMessageResult {
     let sender = SealedSenderIdentity {
       inner: ExternalIdentity {
         name: sender_uuid,
-        device_id: sender_device_id,
+        device_id: sender_device_id.into(),
       },
       e164: sender_e164,
     };
