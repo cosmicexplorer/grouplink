@@ -205,7 +205,7 @@ use prost::Message as _;
 
 use std::convert::{TryFrom, TryInto};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
   Bundle(PreKeyBundle),
   Sealed(SealedSenderMessage),
@@ -257,5 +257,45 @@ impl TryFrom<&[u8]> for Message {
   fn try_from(value: &[u8]) -> Result<Self, Error> {
     let proto_message = proto::Message::decode(value)?;
     Self::try_from(proto_message)
+  }
+}
+
+/* #[cfg(test)] */
+/* pub mod proptest_strategies { */
+/*   use super::*; */
+/*   use crate::store::{in_memory_store::*, proptest_strategies::*}; */
+
+/*   use proptest::prelude::*; */
+
+/*   use std::convert::{TryFrom, TryInto}; */
+/* } */
+
+#[cfg(test)]
+pub mod test {
+  /* use super::{proptest_strategies::*, *}; */
+  use super::*;
+  use crate::identity::Identity;
+  use crate::session::{proptest_strategies::*, *};
+  use crate::store::proptest_strategies::*;
+
+  use futures::executor::block_on;
+  use proptest::prelude::*;
+
+  use std::convert::{TryFrom, TryInto};
+
+  proptest! {
+    #[test]
+    fn test_serde_message_bundle(id in any::<Identity>(),
+                                 spk_req in any::<SignedPreKeyRequest>(),
+                                 opk_req in any::<OneTimePreKeyRequest>()) {
+      let store = generate_store_wrapper(id.crypto);
+      let spk = block_on(generate_signed_pre_key(store.clone(), spk_req)).unwrap();
+      let opk = block_on(generate_one_time_pre_key(store.clone(), opk_req)).unwrap();
+      let pkb = block_on(generate_pre_key_bundle(store, id.external, spk, opk)).unwrap();
+      let message_bundle = Message::Bundle(pkb);
+      let encoded_pre_key_bundle: Box<[u8]> = message_bundle.clone().try_into().unwrap();
+      let resurrected = Message::try_from(encoded_pre_key_bundle.as_ref()).unwrap();
+      prop_assert_eq!(message_bundle, resurrected);
+    }
   }
 }

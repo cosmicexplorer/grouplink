@@ -18,9 +18,10 @@ use crate::error::Error;
 use async_trait::async_trait;
 use displaydoc::Display;
 use libsignal_protocol as signal;
+use parking_lot::RwLock;
 use thiserror::Error;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 #[async_trait]
 pub trait Persistent<Record> {
@@ -48,6 +49,9 @@ pub struct Store<
   pub _record: PhantomData<Record>,
 }
 
+pub type StoreWrapper<Record, S, PK, SPK, ID, Sender> =
+  Arc<RwLock<Store<Record, S, PK, SPK, ID, Sender>>>;
+
 #[derive(Debug, Display, Error)]
 pub enum StoreError {
   /// the stored identity {0:?} did not match the expected key pair {1:?}
@@ -73,6 +77,13 @@ pub mod conversions {
   /* TODO: use property-based testing to validate these conversions (with TryFrom)! */
   #[derive(Clone, Debug)]
   pub struct IdStore(pub signal::InMemIdentityKeyStore);
+
+  /* proptest! { */
+  /*   #[test] */
+  /*   fn test_serde() { */
+
+  /*   } */
+  /* } */
 
   impl From<signal::InMemIdentityKeyStore> for IdStore {
     fn from(value: signal::InMemIdentityKeyStore) -> Self {
@@ -763,6 +774,15 @@ pub mod file_persistence {
     FileSenderKeyStore,
   >;
 
+  pub type FileStoreWrapper = super::StoreWrapper<
+    PathBuf,
+    FileSessionStore,
+    FilePreKeyStore,
+    FileSignedPreKeyStore,
+    FileIdStore,
+    FileSenderKeyStore,
+  >;
+
   #[derive(Debug, Clone, Copy, PartialEq, Eq)]
   pub enum ExtractionBehavior {
     ReadOrError,
@@ -904,5 +924,128 @@ pub mod file_persistence {
         behavior,
       })
     }
+  }
+}
+
+pub mod in_memory_store {
+  use super::*;
+  use crate::identity::CryptographicIdentity;
+  use libsignal_protocol as signal;
+
+  #[async_trait]
+  impl Persistent<()> for signal::InMemIdentityKeyStore {
+    async fn persist(&mut self) -> Result<(), Error> {
+      Ok(())
+    }
+    async fn extract(_record: ()) -> Result<Self, Error>
+    where
+      Self: Sized,
+    {
+      unreachable!()
+    }
+  }
+
+  #[async_trait]
+  impl Persistent<()> for signal::InMemSessionStore {
+    async fn persist(&mut self) -> Result<(), Error> {
+      Ok(())
+    }
+    async fn extract(_record: ()) -> Result<Self, Error>
+    where
+      Self: Sized,
+    {
+      Ok(Self::new())
+    }
+  }
+
+  #[async_trait]
+  impl Persistent<()> for signal::InMemPreKeyStore {
+    async fn persist(&mut self) -> Result<(), Error> {
+      Ok(())
+    }
+    async fn extract(_record: ()) -> Result<Self, Error>
+    where
+      Self: Sized,
+    {
+      Ok(Self::new())
+    }
+  }
+
+  #[async_trait]
+  impl Persistent<()> for signal::InMemSignedPreKeyStore {
+    async fn persist(&mut self) -> Result<(), Error> {
+      Ok(())
+    }
+    async fn extract(_record: ()) -> Result<Self, Error>
+    where
+      Self: Sized,
+    {
+      Ok(Self::new())
+    }
+  }
+
+  #[async_trait]
+  impl Persistent<()> for signal::InMemSenderKeyStore {
+    async fn persist(&mut self) -> Result<(), Error> {
+      Ok(())
+    }
+    async fn extract(_record: ()) -> Result<Self, Error>
+    where
+      Self: Sized,
+    {
+      Ok(Self::new())
+    }
+  }
+
+  pub type InMemStore = super::Store<
+    (),
+    signal::InMemSessionStore,
+    signal::InMemPreKeyStore,
+    signal::InMemSignedPreKeyStore,
+    signal::InMemIdentityKeyStore,
+    signal::InMemSenderKeyStore,
+  >;
+
+  impl InMemStore {
+    pub fn new_from_crypto(crypto: CryptographicIdentity) -> Self {
+      let CryptographicIdentity { inner, seed } = crypto;
+      let identity_store = signal::InMemIdentityKeyStore::new(inner, seed.into());
+      Self {
+        session_store: signal::InMemSessionStore::new(),
+        pre_key_store: signal::InMemPreKeyStore::new(),
+        signed_pre_key_store: signal::InMemSignedPreKeyStore::new(),
+        identity_store,
+        sender_key_store: signal::InMemSenderKeyStore::new(),
+        _record: PhantomData,
+      }
+    }
+  }
+
+  pub type InMemStoreWrapper = StoreWrapper<
+    (),
+    signal::InMemSessionStore,
+    signal::InMemPreKeyStore,
+    signal::InMemSignedPreKeyStore,
+    signal::InMemIdentityKeyStore,
+    signal::InMemSenderKeyStore,
+  >;
+}
+
+#[cfg(test)]
+pub mod proptest_strategies {
+  pub use super::in_memory_store::*;
+  use crate::identity::CryptographicIdentity;
+
+  use parking_lot::RwLock;
+
+  use std::sync::Arc;
+
+  pub fn generate_store(crypto: CryptographicIdentity) -> InMemStore {
+    InMemStore::new_from_crypto(crypto)
+  }
+
+  pub fn generate_store_wrapper(crypto: CryptographicIdentity) -> InMemStoreWrapper {
+    let store = generate_store(crypto);
+    Arc::new(RwLock::new(store))
   }
 }

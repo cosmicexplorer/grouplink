@@ -11,8 +11,7 @@ use crate::util::encode_proto_message;
 
 use libsignal_protocol as signal;
 use prost::Message;
-use rand;
-use rand::{CryptoRng, Rng};
+use rand::{self, CryptoRng, Rng};
 use uuid::Uuid;
 
 use std::{
@@ -22,7 +21,12 @@ use std::{
 
 use crate::error::{Error, ProtobufCodingFailure};
 
+#[cfg(not(test))]
 pub trait Spontaneous<Params> {
+  fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
+}
+#[cfg(test)]
+pub trait Spontaneous<Params>: fmt::Debug + Clone {
   fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
 }
 
@@ -339,4 +343,125 @@ pub struct ServerCert {
 pub struct SenderCert {
   pub inner: signal::SenderCertificate,
   pub trust_root: signal::PublicKey,
+}
+
+#[cfg(test)]
+pub mod proptest_strategies {
+  use super::*;
+
+  use proptest::{
+    arbitrary::Arbitrary,
+    strategy::{NewTree, Strategy, ValueTree},
+    test_runner::TestRunner,
+  };
+
+  #[derive(Clone)]
+  pub struct SpontaneousParamsTree<Params: fmt::Debug + Clone, T: Spontaneous<Params>> {
+    params: Params,
+    inner: T,
+  }
+
+  impl<Params: fmt::Debug + Clone, T: Spontaneous<Params>> fmt::Debug
+    for SpontaneousParamsTree<Params, T>
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      write!(f, "{{ params={:?} }}", self.params)
+    }
+  }
+
+  impl<Params: fmt::Debug + Clone, T: Spontaneous<Params>> SpontaneousParamsTree<Params, T> {
+    pub fn new(params: Params) -> Self {
+      let p2 = params.clone();
+      Self {
+        params,
+        inner: T::generate(p2, &mut rand::thread_rng()),
+      }
+    }
+  }
+
+  impl<Params: fmt::Debug + Clone, T: Spontaneous<Params>> ValueTree
+    for SpontaneousParamsTree<Params, T>
+  {
+    type Value = T;
+    fn current(&self) -> Self::Value {
+      self.inner.clone()
+    }
+    fn simplify(&mut self) -> bool {
+      false
+    }
+    fn complicate(&mut self) -> bool {
+      false
+    }
+  }
+
+  impl<Params: fmt::Debug + Clone, T: Spontaneous<Params>> Strategy
+    for SpontaneousParamsTree<Params, T>
+  {
+    type Tree = Self;
+    type Value = T;
+    fn new_tree(&self, _runner: &mut TestRunner) -> NewTree<Self> {
+      Ok(self.clone())
+    }
+  }
+
+  impl Arbitrary for CryptographicIdentity {
+    type Parameters = ();
+    type Strategy = SpontaneousParamsTree<(), Self>;
+    fn arbitrary_with(args: ()) -> Self::Strategy {
+      SpontaneousParamsTree::new(args)
+    }
+  }
+  impl Arbitrary for ExternalIdentity {
+    type Parameters = ();
+    type Strategy = SpontaneousParamsTree<(), Self>;
+    fn arbitrary_with(args: ()) -> Self::Strategy {
+      SpontaneousParamsTree::new(args)
+    }
+  }
+  impl Arbitrary for Identity {
+    type Parameters = ();
+    type Strategy = SpontaneousParamsTree<(), Self>;
+    fn arbitrary_with(args: ()) -> Self::Strategy {
+      SpontaneousParamsTree::new(args)
+    }
+  }
+  impl Arbitrary for SealedSenderIdentity {
+    type Parameters = ();
+    type Strategy = SpontaneousParamsTree<(), Self>;
+    fn arbitrary_with(args: ()) -> Self::Strategy {
+      SpontaneousParamsTree::new(args)
+    }
+  }
+}
+
+#[cfg(test)]
+pub mod test {
+  use super::*;
+
+  use proptest::prelude::*;
+
+  proptest! {
+    #[test]
+    fn test_serde_crypto(crypto in any::<CryptographicIdentity>()) {
+      let buf: Box<[u8]> = crypto.clone().into();
+      let resurrected = CryptographicIdentity::try_from(buf.as_ref()).unwrap();
+      prop_assert_eq!(crypto, resurrected);
+    }
+
+    #[test]
+    fn test_serde_external(external in any::<ExternalIdentity>()) {
+      let buf: Box<[u8]> = external.clone().into();
+      let resurrected = ExternalIdentity::try_from(buf.as_ref()).unwrap();
+      prop_assert_eq!(external, resurrected);
+    }
+
+    #[test]
+    fn test_serde_identity(crypto in any::<CryptographicIdentity>(),
+                           external in any::<ExternalIdentity>()) {
+      let id = Identity { crypto, external };
+      let buf: Box<[u8]> = id.clone().into();
+      let resurrected = Identity::try_from(buf.as_ref()).unwrap();
+      prop_assert_eq!(id, resurrected);
+    }
+  }
 }

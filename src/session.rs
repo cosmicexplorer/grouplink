@@ -159,6 +159,22 @@ pub struct PreKeyBundle {
   pub inner: signal::PreKeyBundle,
 }
 
+impl PartialEq for PreKeyBundle {
+  fn eq(&self, other: &Self) -> bool {
+    (self.destination == other.destination)
+      && (self.inner.registration_id().ok() == other.inner.registration_id().ok())
+      && (self.inner.device_id().ok() == other.inner.device_id().ok())
+      && (self.inner.pre_key_id().ok() == other.inner.pre_key_id().ok())
+      && (self.inner.pre_key_public().ok() == other.inner.pre_key_public().ok())
+      && (self.inner.signed_pre_key_id().ok() == other.inner.signed_pre_key_id().ok())
+      && (self.inner.signed_pre_key_public().ok() == other.inner.signed_pre_key_public().ok())
+      && (self.inner.signed_pre_key_signature().ok() == other.inner.signed_pre_key_signature().ok())
+      && (self.inner.identity_key().ok() == other.inner.identity_key().ok())
+  }
+}
+
+impl Eq for PreKeyBundle {}
+
 impl PreKeyBundle {
   pub fn new(request: PreKeyBundleRequest) -> Result<Self, Error> {
     let PreKeyBundleRequest {
@@ -355,6 +371,15 @@ pub struct SealedSenderMessage {
   pub trust_root: signal::PublicKey,
   pub encrypted_message: Box<[u8]>,
 }
+
+impl PartialEq for SealedSenderMessage {
+  fn eq(&self, other: &Self) -> bool {
+    (self.trust_root == other.trust_root)
+      && (self.encrypted_message.as_ref() == other.encrypted_message.as_ref())
+  }
+}
+
+impl Eq for SealedSenderMessage {}
 
 impl SealedSenderMessage {
   pub async fn intern<
@@ -570,5 +595,106 @@ impl SealedSenderMessageResult {
       sender,
       plaintext: plaintext.into_boxed_slice(),
     })
+  }
+}
+
+#[cfg(test)]
+pub mod proptest_strategies {
+  use super::*;
+  use crate::{
+    error::Error,
+    identity::proptest_strategies::*,
+    store::{proptest_strategies::*, *},
+  };
+
+  use futures::executor::block_on;
+  use proptest::arbitrary::Arbitrary;
+  use proptest::prelude::*;
+
+  impl Arbitrary for SignedPreKeyRequest {
+    type Parameters = ();
+    type Strategy = SpontaneousParamsTree<(), Self>;
+    fn arbitrary_with(args: ()) -> Self::Strategy {
+      SpontaneousParamsTree::new(args)
+    }
+  }
+
+  impl Arbitrary for OneTimePreKeyRequest {
+    type Parameters = ();
+    type Strategy = SpontaneousParamsTree<(), Self>;
+    fn arbitrary_with(args: ()) -> Self::Strategy {
+      SpontaneousParamsTree::new(args)
+    }
+  }
+
+  pub async fn generate_signed_pre_key(
+    store: InMemStoreWrapper,
+    req: SignedPreKeyRequest,
+  ) -> Result<SignedPreKey, Error> {
+    let Store {
+      ref mut identity_store,
+      ref mut signed_pre_key_store,
+      ..
+    } = *store.write();
+    SignedPreKey::intern(
+      req,
+      identity_store,
+      signed_pre_key_store,
+      &mut rand::thread_rng(),
+    )
+    .await
+  }
+
+  prop_compose! {
+    pub fn signed_pre_key(store: InMemStoreWrapper)(
+      req in any::<SignedPreKeyRequest>()
+    ) -> SignedPreKey {
+      let store = store.clone();
+      block_on(generate_signed_pre_key(store, req)).unwrap()
+    }
+  }
+
+  pub async fn generate_one_time_pre_key(
+    store: InMemStoreWrapper,
+    req: OneTimePreKeyRequest,
+  ) -> Result<OneTimePreKey, Error> {
+    let Store {
+      ref mut pre_key_store,
+      ..
+    } = *store.write();
+    OneTimePreKey::intern(req, pre_key_store).await
+  }
+
+  prop_compose! {
+    pub fn one_time_pre_key(store: InMemStoreWrapper)(
+      req in any::<OneTimePreKeyRequest>()
+    ) -> OneTimePreKey {
+      let store = store.clone();
+      block_on(generate_one_time_pre_key(store, req)).unwrap()
+    }
+  }
+
+  pub async fn generate_pre_key_bundle(
+    store: InMemStoreWrapper,
+    external: ExternalIdentity,
+    spk: SignedPreKey,
+    opk: OneTimePreKey,
+  ) -> Result<PreKeyBundle, Error> {
+    let Store {
+      ref identity_store, ..
+    } = *store.read();
+    let req = PreKeyBundleRequest::create(external, spk, opk, identity_store).await?;
+    Ok(PreKeyBundle::new(req)?)
+  }
+
+  prop_compose! {
+    pub fn pre_key_bundle(store: InMemStoreWrapper, external: ExternalIdentity)(
+      spk in signed_pre_key(store.clone()),
+      opk in one_time_pre_key(store.clone())
+    ) -> PreKeyBundle {
+      let store = store.clone();
+      let external = external.clone();
+      block_on(generate_pre_key_bundle(store, external, spk, opk)).unwrap()
+    }
   }
 }
