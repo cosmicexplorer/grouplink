@@ -5,11 +5,12 @@
 //!
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::{identity::*, session::*, message::*, store::{file_persistence::*, conversions::*, *}};
+//! use grouplink::{identity::*, session::*, message::*, store::file_persistence::*};
 //! use libsignal_protocol as signal;
-//! use futures::executor::block_on;
+//! # use futures::executor::block_on;
 //! use std::convert::{TryFrom, TryInto};
 //! use std::path::PathBuf;
+//! # block_on(async {
 //!
 //! // Create a new identity.
 //! let alice = generate_identity();
@@ -17,84 +18,83 @@
 //!
 //! // Create a mutable store.
 //! let mut alice_store =
-//!   block_on(initialize_file_backed_store(DirectoryStoreRequest {
+//!   initialize_file_backed_store(DirectoryStoreRequest {
 //!     path: PathBuf::from("/home/cosmicexplorer/alice"),
 //!     id: alice.crypto,
 //!     behavior: ExtractionBehavior::OverwriteWithDefault,
-//!   }))?;
+//!   }).await?;
 //!
 //! // Create a destination identity.
 //! let bob = generate_identity();
 //! let bob_client = generate_sealed_sender_identity(bob.external.clone());
 //! let mut bob_store =
-//!   block_on(initialize_file_backed_store(DirectoryStoreRequest {
+//!   initialize_file_backed_store(DirectoryStoreRequest {
 //!     path: PathBuf::from("/home/cosmicexplorer/bob"),
 //!     id: bob.crypto,
 //!     behavior: ExtractionBehavior::OverwriteWithDefault,
-//!   }))?;
+//!   }).await?;
 //!
 //! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 //! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
-//! let bob_signed_pre_key = block_on(generate_signed_pre_key(&mut bob_store))?;
-//! let bob_one_time_pre_key = block_on(generate_one_time_pre_key(&mut bob_store))?;
+//! let bob_signed_pre_key = generate_signed_pre_key(&mut bob_store).await?;
+//! let bob_one_time_pre_key = generate_one_time_pre_key(&mut bob_store).await?;
 //!
 //! // Generate the pre-key bundle.
-//! let bob_pre_key_bundle =
-//!   block_on(generate_pre_key_bundle(bob.external.clone(),
-//!                                    bob_signed_pre_key,
-//!                                    bob_one_time_pre_key,
-//!                                    &bob_store))?;
+//! let bob_pre_key_bundle = generate_pre_key_bundle(bob.external.clone(),
+//!                                                  bob_signed_pre_key,
+//!                                                  bob_one_time_pre_key,
+//!                                                  &bob_store).await?;
 //! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
 //!
 //! // Encrypt a message.
 //! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
 //!
-//! let initial_message =
-//!   block_on(encrypt_sealed_sender_initial_message(
-//!              SealedSenderMessageRequest {
-//!                bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
-//!                sender_cert: generate_sender_cert(alice.clone(), SenderCertTTL::default())?,
-//!                ptext: &ptext,
-//!              },
-//!              &mut alice_store,
-//!   ))?;
+//! let initial_message = encrypt_sealed_sender_initial_message(
+//!   SealedSenderMessageRequest {
+//!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+//!     sender_cert: generate_sender_cert(alice.clone(), SenderCertTTL::default())?,
+//!     ptext: &ptext,
+//!   },
+//!   &mut alice_store,
+//! ).await?;
 //! let encoded_sealed_sender_message: Box<[u8]> = Message::Sealed(initial_message).try_into()?;
 //!
 //! // Decrypt the sealed-sender message.
-//! let message_result =
-//!   block_on(decrypt_sealed_sender_message(
-//!              SealedSenderDecryptionRequest {
-//!                inner: Message::try_from(encoded_sealed_sender_message.as_ref())?.assert_sealed()?,
-//!                local_identity: bob_client,
-//!              },
-//!              &mut bob_store,
-//!   ))?;
+//! let message_result = decrypt_sealed_sender_message(
+//!   SealedSenderDecryptionRequest {
+//!     inner: Message::try_from(encoded_sealed_sender_message.as_ref())?.assert_sealed()?,
+//!     local_identity: bob_client.clone(),
+//!   },
+//!   &mut bob_store,
+//! ).await?;
 //!
+//! assert!(message_result.sender.inner == alice.external);
 //! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
 //!
 //! // Now send a message back to Alice.
-//! let bob_follow_up =
-//!   block_on(encrypt_sealed_sender_followup_message(
-//!              SealedSenderFollowupMessageRequest {
-//!                target: message_result.sender.inner,
-//!                sender_cert: generate_sender_cert(bob.clone(), SenderCertTTL::default())?,
-//!                ptext: "oh ok".as_bytes(),
-//!              },
-//!              &mut bob_store))?;
+//! let bob_follow_up = encrypt_sealed_sender_followup_message(
+//!   SealedSenderFollowupMessageRequest {
+//!     target: message_result.sender.inner,
+//!     sender_cert: generate_sender_cert(bob.clone(), SenderCertTTL::default())?,
+//!     ptext: "oh ok".as_bytes(),
+//!   },
+//!   &mut bob_store,
+//! ).await?;
 //! let encoded_follow_up_message: Box<[u8]> = Message::Sealed(bob_follow_up).try_into()?;
 //!
-//! let alice_incoming =
-//!   block_on(decrypt_sealed_sender_message(
-//!     SealedSenderDecryptionRequest {
-//!       inner: Message::try_from(encoded_follow_up_message.as_ref())?.assert_sealed()?,
-//!       local_identity: alice_client,
-//!     },
-//!     &mut alice_store,
-//!   ))?.plaintext;
+//! let alice_incoming = decrypt_sealed_sender_message(
+//!   SealedSenderDecryptionRequest {
+//!     inner: Message::try_from(encoded_follow_up_message.as_ref())?.assert_sealed()?,
+//!     local_identity: alice_client.clone(),
+//!   },
+//!   &mut alice_store,
+//! ).await?;
 //!
-//! assert!("oh ok" == std::str::from_utf8(alice_incoming.as_ref()).unwrap());
+//! assert!(alice_incoming.sender.inner == bob.external);
+//! assert!("oh ok" == std::str::from_utf8(alice_incoming.plaintext.as_ref()).unwrap());
 //!
 //! # Ok(())
+//! # }) // async
 //! # }
 //!```
 
