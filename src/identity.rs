@@ -521,13 +521,6 @@ pub mod proptest_strategies {
       SpontaneousParamsTree::new(args)
     }
   }
-  impl Arbitrary for SealedSenderIdentity {
-    type Parameters = ();
-    type Strategy = SpontaneousParamsTree<(), Self>;
-    fn arbitrary_with(args: ()) -> Self::Strategy {
-      SpontaneousParamsTree::new(args)
-    }
-  }
 }
 
 #[cfg(test)]
