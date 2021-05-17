@@ -17,7 +17,7 @@ use crate::error::{Error, ProtobufCodingFailure};
 use crate::identity::{
   CryptographicIdentity, ExternalIdentity, SealedSenderIdentity, SenderCert, Spontaneous,
 };
-use crate::store::Persistent;
+use crate::store::{Persistent, Store};
 use crate::util::encode_proto_message;
 
 use libsignal_protocol as signal;
@@ -93,6 +93,26 @@ impl SignedPreKey {
   }
 }
 
+pub async fn generate_signed_pre_key<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<SignedPreKey, Error> {
+  let req = SignedPreKeyRequest::generate((), &mut rand::thread_rng());
+  SignedPreKey::intern(
+    req,
+    &mut store.identity_store,
+    &mut store.signed_pre_key_store,
+    &mut rand::thread_rng(),
+  )
+  .await
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OneTimePreKeyRequest {
   pub id: signal::PreKeyId,
@@ -124,6 +144,20 @@ impl OneTimePreKey {
     store.persist().await?;
     Ok(Self { id, pair })
   }
+}
+
+pub async fn generate_one_time_pre_key<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<OneTimePreKey, Error> {
+  let req = OneTimePreKeyRequest::generate((), &mut rand::thread_rng());
+  OneTimePreKey::intern(req, &mut store.pre_key_store).await
 }
 
 #[derive(Debug, Clone)]
@@ -219,6 +253,23 @@ impl PreKeyBundle {
     id_store.persist().await?;
     Ok(())
   }
+}
+
+pub async fn generate_pre_key_bundle<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  external: ExternalIdentity,
+  spk: SignedPreKey,
+  opk: OneTimePreKey,
+  store: &Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<PreKeyBundle, Error> {
+  let req = PreKeyBundleRequest::create(external, spk, opk, &store.identity_store).await?;
+  Ok(PreKeyBundle::new(req)?)
 }
 
 impl TryFrom<PreKeyBundle> for proto::PreKeyBundle {
@@ -458,6 +509,46 @@ impl SealedSenderMessage {
   }
 }
 
+pub async fn encrypt_sealed_sender_initial_message<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  req: SealedSenderMessageRequest<'_>,
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<SealedSenderMessage, Error> {
+  SealedSenderMessage::intern(
+    req,
+    &mut store.session_store,
+    &mut store.identity_store,
+    &mut rand::thread_rng(),
+  )
+  .await
+}
+
+pub async fn encrypt_sealed_sender_followup_message<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  req: SealedSenderFollowupMessageRequest<'_>,
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<SealedSenderMessage, Error> {
+  SealedSenderMessage::intern_followup(
+    req,
+    &mut store.session_store,
+    &mut store.identity_store,
+    &mut rand::thread_rng(),
+  )
+  .await
+}
+
 impl From<SealedSenderMessage> for proto::SealedSenderMessage {
   fn from(value: SealedSenderMessage) -> Self {
     let SealedSenderMessage {
@@ -598,6 +689,27 @@ impl SealedSenderMessageResult {
   }
 }
 
+pub async fn decrypt_sealed_sender_message<
+  Record,
+  S: signal::SessionStore + Persistent<Record>,
+  PK: signal::PreKeyStore + Persistent<Record>,
+  SPK: signal::SignedPreKeyStore + Persistent<Record>,
+  ID: signal::IdentityKeyStore + Persistent<Record>,
+  Sender: signal::SenderKeyStore + Persistent<Record>,
+>(
+  req: SealedSenderDecryptionRequest,
+  store: &mut Store<Record, S, PK, SPK, ID, Sender>,
+) -> Result<SealedSenderMessageResult, Error> {
+  SealedSenderMessageResult::intern(
+    req,
+    &mut store.identity_store,
+    &mut store.session_store,
+    &mut store.pre_key_store,
+    &mut store.signed_pre_key_store,
+  )
+  .await
+}
+
 #[cfg(test)]
 pub mod proptest_strategies {
   use super::*;
@@ -627,7 +739,7 @@ pub mod proptest_strategies {
     }
   }
 
-  pub async fn generate_signed_pre_key(
+  pub async fn generate_signed_pre_key_wrapped(
     store: InMemStoreWrapper,
     req: SignedPreKeyRequest,
   ) -> Result<SignedPreKey, Error> {
@@ -650,11 +762,11 @@ pub mod proptest_strategies {
       req in any::<SignedPreKeyRequest>()
     ) -> SignedPreKey {
       let store = store.clone();
-      block_on(generate_signed_pre_key(store, req)).unwrap()
+      block_on(generate_signed_pre_key_wrapped(store, req)).unwrap()
     }
   }
 
-  pub async fn generate_one_time_pre_key(
+  pub async fn generate_one_time_pre_key_wrapped(
     store: InMemStoreWrapper,
     req: OneTimePreKeyRequest,
   ) -> Result<OneTimePreKey, Error> {
@@ -670,11 +782,11 @@ pub mod proptest_strategies {
       req in any::<OneTimePreKeyRequest>()
     ) -> OneTimePreKey {
       let store = store.clone();
-      block_on(generate_one_time_pre_key(store, req)).unwrap()
+      block_on(generate_one_time_pre_key_wrapped(store, req)).unwrap()
     }
   }
 
-  pub async fn generate_pre_key_bundle(
+  pub async fn generate_pre_key_bundle_wrapped(
     store: InMemStoreWrapper,
     external: ExternalIdentity,
     spk: SignedPreKey,
@@ -694,7 +806,7 @@ pub mod proptest_strategies {
     ) -> PreKeyBundle {
       let store = store.clone();
       let external = external.clone();
-      block_on(generate_pre_key_bundle(store, external, spk, opk)).unwrap()
+      block_on(generate_pre_key_bundle_wrapped(store, external, spk, opk)).unwrap()
     }
   }
 }

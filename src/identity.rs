@@ -9,14 +9,17 @@ pub mod proto {
 
 use crate::util::encode_proto_message;
 
+use displaydoc::Display;
 use libsignal_protocol as signal;
 use prost::Message;
 use rand::{self, CryptoRng, Rng};
+use thiserror::Error;
 use uuid::Uuid;
 
 use std::{
   convert::{AsRef, From, TryFrom},
-  fmt,
+  default, fmt,
+  time::{Duration, SystemTime, SystemTimeError},
 };
 
 use crate::error::{Error, ProtobufCodingFailure};
@@ -255,6 +258,10 @@ impl Spontaneous<()> for Identity {
   }
 }
 
+pub fn generate_identity() -> Identity {
+  Identity::generate((), &mut rand::thread_rng())
+}
+
 impl From<Identity> for proto::Identity {
   fn from(value: Identity) -> Self {
     let Identity { crypto, external } = value;
@@ -326,6 +333,11 @@ impl Spontaneous<ExternalIdentity> for SealedSenderIdentity {
   }
 }
 
+pub fn generate_sealed_sender_identity(external: ExternalIdentity) -> SealedSenderIdentity {
+  SealedSenderIdentity::generate(external, &mut rand::thread_rng())
+}
+
+#[cfg(test)]
 impl Spontaneous<()> for SealedSenderIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     let ext = ExternalIdentity::generate((), csprng);
@@ -339,10 +351,76 @@ pub struct ServerCert {
   pub trust_root: signal::PublicKey,
 }
 
+fn generate_server_cert() -> Result<(ServerCert, signal::KeyPair), Error> {
+  let trust_root = signal::KeyPair::generate(&mut rand::thread_rng());
+  let server_key = signal::KeyPair::generate(&mut rand::thread_rng());
+  let certificate_id: u32 = (&mut rand::thread_rng()).gen();
+  Ok((
+    ServerCert {
+      inner: signal::ServerCertificate::new(
+        certificate_id,
+        server_key.public_key,
+        &trust_root.private_key,
+        &mut rand::thread_rng(),
+      )?,
+      trust_root: trust_root.public_key,
+    },
+    server_key,
+  ))
+}
+
 #[derive(Debug, Clone)]
 pub struct SenderCert {
   pub inner: signal::SenderCertificate,
   pub trust_root: signal::PublicKey,
+}
+
+#[derive(Debug, Error, Display)]
+pub enum IdentityError {
+  /// expiration ttl {1:?} was too long given the current time {0:?}
+  ExpirationIsTooFarInTheFuture(SystemTime, Duration),
+  /// a system time error {0} was raised internally
+  SystemTime(#[from] SystemTimeError),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct SenderCertTTL(pub Duration);
+
+impl SenderCertTTL {
+  pub fn calculate_expires_timestamp(self) -> Result<u64, IdentityError> {
+    let now = SystemTime::now();
+    Ok(
+      now
+        .checked_add(self.0)
+        .ok_or_else(|| IdentityError::ExpirationIsTooFarInTheFuture(now, self.0))?
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs(),
+    )
+  }
+}
+
+impl default::Default for SenderCertTTL {
+  fn default() -> Self {
+    /* 1 day */
+    Self(Duration::from_secs(60 * 60 * 24))
+  }
+}
+
+pub fn generate_sender_cert(id: Identity, ttl: SenderCertTTL) -> Result<SenderCert, Error> {
+  let (ServerCert { inner, trust_root }, server_key) = generate_server_cert()?;
+  Ok(SenderCert {
+    inner: signal::SenderCertificate::new(
+      id.external.name.clone(),
+      None,
+      *id.crypto.inner.public_key(),
+      id.external.device_id,
+      ttl.calculate_expires_timestamp()?,
+      inner,
+      &server_key.private_key,
+      &mut rand::thread_rng(),
+    )?,
+    trust_root,
+  })
 }
 
 #[cfg(test)]

@@ -925,6 +925,13 @@ pub mod file_persistence {
       })
     }
   }
+
+  pub async fn initialize_file_backed_store(
+    req: DirectoryStoreRequest,
+  ) -> Result<FileStore, Error> {
+    let layout = req.into_layout()?;
+    FileStore::initialize_file_backed_store_with_default(layout).await
+  }
 }
 
 pub mod in_memory_store {

@@ -14,54 +14,40 @@
 //! use std::path::PathBuf;
 //!
 //! // Create a new identity.
-//! let alice = Identity::generate((), &mut rand::thread_rng());
-//! let alice_sealed = SealedSenderIdentity::generate(alice.external.clone(),
-//!                                                   &mut rand::thread_rng());
+//! let alice = generate_identity();
+//! let alice_sealed = generate_sealed_sender_identity(alice.external.clone());
 //! let alice_address: signal::ProtocolAddress = alice.external.clone().into();
 //!
 //! // Create a mutable store.
-//! let alice_store_request = DirectoryStoreRequest {
-//!   path: PathBuf::from("/home/cosmicexplorer/alice"),
-//!   id: alice.crypto,
-//!   behavior: ExtractionBehavior::OverwriteWithDefault,
-//!  };
 //! let mut alice_store =
-//!   block_on(FileStore::initialize_file_backed_store_with_default(
-//!              alice_store_request.into_layout()?))?;
+//!   block_on(initialize_file_backed_store(DirectoryStoreRequest {
+//!     path: PathBuf::from("/home/cosmicexplorer/alice"),
+//!     id: alice.crypto,
+//!     behavior: ExtractionBehavior::OverwriteWithDefault,
+//!   }))?;
 //!
 //! // Create a destination identity.
-//! let bob = Identity::generate((), &mut rand::thread_rng());
-//! let bob_sealed = SealedSenderIdentity::generate(bob.external.clone(),
-//!                                                 &mut rand::thread_rng());
+//! let bob = generate_identity();
+//! let bob_sealed = generate_sealed_sender_identity(bob.external.clone());
 //! let bob_address: signal::ProtocolAddress = bob.external.clone().into();
-//! let bob_store_request = DirectoryStoreRequest {
-//!   path: PathBuf::from("/home/cosmicexplorer/bob"),
-//!   id: bob.crypto,
-//!   behavior: ExtractionBehavior::OverwriteWithDefault,
-//! };
 //! let mut bob_store =
-//!   block_on(FileStore::initialize_file_backed_store_with_default(
-//!              bob_store_request.into_layout()?))?;
+//!   block_on(initialize_file_backed_store(DirectoryStoreRequest {
+//!     path: PathBuf::from("/home/cosmicexplorer/bob"),
+//!     id: bob.crypto,
+//!     behavior: ExtractionBehavior::OverwriteWithDefault,
+//!   }))?;
 //!
 //! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
 //! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
-//! let bob_signed_pre_key =
-//!   block_on(SignedPreKey::intern(
-//!              SignedPreKeyRequest::generate((), &mut rand::thread_rng()),
-//!              &mut bob_store.identity_store,
-//!              &mut bob_store.signed_pre_key_store,
-//!              &mut rand::thread_rng()))?;
-//! let bob_one_time_pre_key =
-//!   block_on(OneTimePreKey::intern(
-//!              OneTimePreKeyRequest::generate((), &mut rand::thread_rng()),
-//!              &mut bob_store.pre_key_store))?;
+//! let bob_signed_pre_key = block_on(generate_signed_pre_key(&mut bob_store))?;
+//! let bob_one_time_pre_key = block_on(generate_one_time_pre_key(&mut bob_store))?;
 //!
 //! // Generate the pre-key bundle.
-//! let bob_pre_key_bundle = PreKeyBundle::new(
-//!   block_on(PreKeyBundleRequest::create(bob.external.clone(),
-//!                                        bob_signed_pre_key,
-//!                                        bob_one_time_pre_key,
-//!                                        &bob_store.identity_store))?)?;
+//! let bob_pre_key_bundle =
+//!   block_on(generate_pre_key_bundle(bob.external.clone(),
+//!                                    bob_signed_pre_key,
+//!                                    bob_one_time_pre_key,
+//!                                    &bob_store))?;
 //! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
 //!
 //! // Encrypt a message.
@@ -72,60 +58,17 @@
 //! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
 //!
 //! // SEALED SENDER STUFF!
-//!
-//! let trust_root = signal::KeyPair::generate(&mut rand::thread_rng());
-//! let server_key = signal::KeyPair::generate(&mut rand::thread_rng());
-//!
-//! let alice_server_cert =
-//!     signal::ServerCertificate::new(1, server_key.public_key, &trust_root.private_key,
-//!                                    &mut rand::thread_rng())?;
-//! let bob_server_cert =
-//!     signal::ServerCertificate::new(1, server_key.public_key, &trust_root.private_key,
-//!                                    &mut rand::thread_rng())?;
-//!
-//! // Very far in the future.
-//! let expires = 2605722925;
-//!
-//! let alice_sender_certificate = signal::SenderCertificate::new(
-//!     alice.external.name.clone(),
-//!     None,
-//!     *alice.crypto.inner.public_key(),
-//!     alice.external.device_id,
-//!     expires,
-//!     alice_server_cert,
-//!     &server_key.private_key,
-//!     &mut rand::thread_rng(),
-//! )?;
-//! let alice_sender_cert = SenderCert {
-//!   inner: alice_sender_certificate,
-//!   trust_root: trust_root.public_key,
-//! };
-//!
-//! let bob_sender_certificate = signal::SenderCertificate::new(
-//!     bob.external.name.clone(),
-//!     None,
-//!     *bob.crypto.inner.public_key(),
-//!     bob.external.device_id,
-//!     expires,
-//!     bob_server_cert,
-//!     &server_key.private_key,
-//!     &mut rand::thread_rng(),
-//! )?;
-//! let bob_sender_cert = SenderCert {
-//!   inner: bob_sender_certificate,
-//!   trust_root: trust_root.public_key,
-//! };
+//! let alice_sender_cert = generate_sender_cert(alice.clone(), SenderCertTTL::default())?;
+//! let bob_sender_cert = generate_sender_cert(bob.clone(), SenderCertTTL::default())?;
 //!
 //! let initial_message =
-//!   block_on(SealedSenderMessage::intern(
+//!   block_on(encrypt_sealed_sender_initial_message(
 //!              SealedSenderMessageRequest {
 //!                bundle: decoded_pre_key_bundle,
 //!                sender_cert: alice_sender_cert,
 //!                ptext: &ptext,
 //!              },
-//!              &mut alice_store.session_store,
-//!              &mut alice_store.identity_store,
-//!              &mut rand::thread_rng(),
+//!              &mut alice_store,
 //!   ))?;
 //! let encoded_sealed_sender_message: Box<[u8]> = Message::Sealed(initial_message).try_into()?;
 //!
@@ -135,15 +78,12 @@
 //!   _ => unreachable!(),
 //! };
 //! let message_result =
-//!   block_on(SealedSenderMessageResult::intern(
+//!   block_on(decrypt_sealed_sender_message(
 //!              SealedSenderDecryptionRequest {
 //!                inner: decoded_sealed_sender_message,
 //!                local_identity: bob_sealed,
 //!              },
-//!              &mut bob_store.identity_store,
-//!              &mut bob_store.session_store,
-//!              &mut bob_store.pre_key_store,
-//!              &mut bob_store.signed_pre_key_store,
+//!              &mut bob_store,
 //!   ))?;
 //!
 //! assert!(message_result.plaintext.as_ref() == ptext.as_ref());
@@ -152,15 +92,13 @@
 //! //?
 //! let bob_text = "oh ok";
 //! let bob_follow_up =
-//!   block_on(SealedSenderMessage::intern_followup(
+//!   block_on(encrypt_sealed_sender_followup_message(
 //!              SealedSenderFollowupMessageRequest {
 //!                target: message_result.sender.inner,
 //!                sender_cert: bob_sender_cert,
 //!                ptext: bob_text.as_bytes(),
 //!              },
-//!              &mut bob_store.session_store,
-//!              &mut bob_store.identity_store,
-//!              &mut rand::thread_rng()))?;
+//!              &mut bob_store))?;
 //! let encoded_follow_up_message: Box<[u8]> = Message::Sealed(bob_follow_up).try_into()?;
 //!
 //! let decoded_follow_up_message = match Message::try_from(encoded_follow_up_message.as_ref())? {
@@ -168,15 +106,12 @@
 //!   _ => unreachable!(),
 //! };
 //! let alice_incoming =
-//!   block_on(SealedSenderMessageResult::intern(
+//!   block_on(decrypt_sealed_sender_message(
 //!     SealedSenderDecryptionRequest {
 //!       inner: decoded_follow_up_message,
 //!       local_identity: alice_sealed,
 //!     },
-//!     &mut alice_store.identity_store,
-//!     &mut alice_store.session_store,
-//!     &mut alice_store.pre_key_store,
-//!     &mut alice_store.signed_pre_key_store,
+//!     &mut alice_store,
 //!   ))?.plaintext;
 //!
 //! assert!(&alice_incoming[..] == bob_text.as_bytes());
@@ -289,9 +224,9 @@ pub mod test {
                                  spk_req in any::<SignedPreKeyRequest>(),
                                  opk_req in any::<OneTimePreKeyRequest>()) {
       let store = generate_store_wrapper(id.crypto);
-      let spk = block_on(generate_signed_pre_key(store.clone(), spk_req)).unwrap();
-      let opk = block_on(generate_one_time_pre_key(store.clone(), opk_req)).unwrap();
-      let pkb = block_on(generate_pre_key_bundle(store, id.external, spk, opk)).unwrap();
+      let spk = block_on(generate_signed_pre_key_wrapped(store.clone(), spk_req)).unwrap();
+      let opk = block_on(generate_one_time_pre_key_wrapped(store.clone(), opk_req)).unwrap();
+      let pkb = block_on(generate_pre_key_bundle_wrapped(store, id.external, spk, opk)).unwrap();
       let message_bundle = Message::Bundle(pkb);
       let encoded_pre_key_bundle: Box<[u8]> = message_bundle.clone().try_into().unwrap();
       let resurrected = Message::try_from(encoded_pre_key_bundle.as_ref()).unwrap();

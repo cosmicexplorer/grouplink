@@ -3,6 +3,7 @@
 
 //! ???
 
+use crate::identity::IdentityError;
 use crate::store::StoreError;
 
 use displaydoc::Display;
@@ -37,9 +38,11 @@ pub enum Error {
   ProtobufEncodingError(#[source] ProtobufCodingFailure),
   /// an error {0} occurred when decoding a protobuf
   ProtobufDecodingError(#[source] ProtobufCodingFailure),
-  /// an error {0} was raised internally
+  /// an identity error {0} was raised internally
+  Identity(#[from] IdentityError),
+  /// a store error {0} was raised internally
   Store(#[from] StoreError),
-  /// an error {0} was raised internally
+  /// a signal protocol error {0} was raised internally
   Signal(#[from] SignalProtocolError),
 }
 
