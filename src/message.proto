@@ -10,10 +10,8 @@ import "session.proto";
 message Message {
   oneof type {
     // Exposes the sender's address.
-    grouplink.proto.session.PreKeyBundle bundle                     = 1;
-    // Exposes the sender's address.
-    grouplink.proto.session.SessionInitiatingMessageRequest initial = 2;
-    // Exposes the sender's address.
-    grouplink.proto.session.FollowUpMessage follow_up               = 3;
+    grouplink.proto.session.PreKeyBundle bundle                       = 1;
+    // Does *not* expose the sender's address.
+    grouplink.proto.session.SealedSenderMessage sealed_sender_message = 2;
   }
 }

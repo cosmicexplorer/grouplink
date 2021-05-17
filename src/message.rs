@@ -13,10 +13,7 @@ pub mod proto {
 }
 
 use crate::error::{Error, ProtobufCodingFailure};
-use crate::session::{
-  address_exposed::{FollowUpMessage, SessionInitiatingMessageRequest},
-  PreKeyBundle,
-};
+use crate::session::{PreKeyBundle, SealedSenderMessage};
 use crate::util::encode_proto_message;
 
 use prost::Message as _;
@@ -26,8 +23,7 @@ use std::convert::{TryFrom, TryInto};
 #[derive(Debug, Clone)]
 pub enum Message {
   Bundle(PreKeyBundle),
-  Initial(SessionInitiatingMessageRequest),
-  FollowUp(FollowUpMessage),
+  Sealed(SealedSenderMessage),
 }
 
 impl TryFrom<Message> for proto::Message {
@@ -36,10 +32,9 @@ impl TryFrom<Message> for proto::Message {
     Ok(proto::Message {
       r#type: Some(match value {
         Message::Bundle(pre_key_bundle) => proto::message::Type::Bundle(pre_key_bundle.try_into()?),
-        Message::Initial(init_message_req) => {
-          proto::message::Type::Initial(init_message_req.into())
+        Message::Sealed(sealed_sender_message) => {
+          proto::message::Type::SealedSenderMessage(sealed_sender_message.try_into()?)
         }
-        Message::FollowUp(follow_up) => proto::message::Type::FollowUp(follow_up.into()),
       }),
     })
   }
@@ -64,10 +59,9 @@ impl TryFrom<proto::Message> for Message {
     })?;
     Ok(match inner {
       proto::message::Type::Bundle(pre_key_bundle) => Message::Bundle(pre_key_bundle.try_into()?),
-      proto::message::Type::Initial(init_message_req) => {
-        Message::Initial(init_message_req.try_into()?)
+      proto::message::Type::SealedSenderMessage(sealed_sender_message) => {
+        Message::Sealed(sealed_sender_message.try_into()?)
       }
-      proto::message::Type::FollowUp(follow_up) => Message::FollowUp(follow_up.try_into()?),
     })
   }
 }

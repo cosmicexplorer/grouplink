@@ -20,16 +20,6 @@ message PreKeyBundle {
   optional bytes identity_key                           = 9;
 }
 
-message SessionInitiatingMessageRequest {
-  optional grouplink.proto.identity.Address sender = 1;
-  optional bytes encrypted_pre_key_message         = 2;
-}
-
-message FollowUpMessage {
-  optional grouplink.proto.identity.Address sender = 1;
-  optional bytes encrypted_signal_message          = 2;
-}
-
 message SealedSenderMessage {
   optional bytes trust_root_public_key           = 1;
   optional bytes encrypted_sealed_sender_message = 2;
