@@ -7,8 +7,7 @@
 //! # fn main() -> Result<(), grouplink::error::Error> {
 //! use grouplink::{identity::*, session::*, message::*, store::file_persistence::*};
 //! # use futures::executor::block_on;
-//! use std::convert::{TryFrom, TryInto};
-//! use std::path::PathBuf;
+//! use std::{convert::{TryFrom, TryInto}, path::PathBuf};
 //! # block_on(async {
 //!
 //! // Create a new identity.
@@ -49,7 +48,8 @@
 //! let initial_message = encrypt_initial_message(
 //!   SealedSenderMessageRequest {
 //!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
-//!     sender_cert: generate_sender_cert(alice_client.clone(), alice.crypto, SenderCertTTL::default())?,
+//!     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
+//!                                       SenderCertTTL::default())?,
 //!     ptext: "asdf".as_bytes(),
 //!   },
 //!   &mut alice_store,
@@ -65,14 +65,15 @@
 //!   &mut bob_store,
 //! ).await?;
 //!
-//! assert!(message_result.sender == alice_client);
+//! assert!(message_result.sender == alice_client.stripped_e164());
 //! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
 //!
 //! // Now send a message back to Alice.
 //! let bob_follow_up = encrypt_followup_message(
 //!   SealedSenderFollowupMessageRequest {
 //!     target: message_result.sender.inner,
-//!     sender_cert: generate_sender_cert(bob_client.clone(), bob.crypto, SenderCertTTL::default())?,
+//!     sender_cert: generate_sender_cert(bob_client.stripped_e164(), bob.crypto,
+//!                                       SenderCertTTL::default())?,
 //!     ptext: "oh ok".as_bytes(),
 //!   },
 //!   &mut bob_store,
@@ -87,7 +88,7 @@
 //!   &mut alice_store,
 //! ).await?;
 //!
-//! assert!(alice_incoming.sender == bob_client);
+//! assert!(alice_incoming.sender == bob_client.stripped_e164());
 //! assert!("oh ok" == std::str::from_utf8(alice_incoming.plaintext.as_ref()).unwrap());
 //!
 //! # Ok(())

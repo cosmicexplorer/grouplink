@@ -322,6 +322,16 @@ pub struct SealedSenderIdentity {
   pub e164: Option<String>,
 }
 
+impl SealedSenderIdentity {
+  pub fn stripped_e164(&self) -> Self {
+    let Self { inner, .. } = self;
+    Self {
+      inner: inner.clone(),
+      e164: None,
+    }
+  }
+}
+
 impl Spontaneous<ExternalIdentity> for SealedSenderIdentity {
   fn generate<R: CryptoRng + Rng>(params: ExternalIdentity, csprng: &mut R) -> Self {
     let random_e164_bytes: [u8; 16] = csprng.gen();
