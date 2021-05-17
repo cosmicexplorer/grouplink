@@ -5,68 +5,42 @@
 
 use crate::store::StoreError;
 
+use displaydoc::Display;
 use libsignal_protocol::SignalProtocolError;
 use prost;
+use thiserror::Error;
 
 use std::convert::Infallible;
-use std::error;
-use std::fmt;
 use std::io;
 
-#[derive(Debug)]
+/// ???
+#[derive(Debug, Display, Error)]
 pub enum ProtobufCodingFailure {
-  OptionalFieldAbsent(String),
-  FieldCompositionWasIncorrect(String),
-  MapStringCodingFailed(String),
-  Io(io::Error),
-  Encode(prost::EncodeError),
-  Decode(prost::DecodeError),
-}
-
-impl fmt::Display for ProtobufCodingFailure {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    /* TODO: what to put here? this impl is needed for [error::Error]. */
-    write!(f, "{:?}", self)
-  }
-}
-
-impl error::Error for ProtobufCodingFailure {
-  fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-    match self {
-      Self::OptionalFieldAbsent(_) => None,
-      Self::FieldCompositionWasIncorrect(_) => None,
-      Self::MapStringCodingFailed(_) => None,
-      Self::Io(e) => Some(e),
-      Self::Encode(e) => Some(e),
-      Self::Decode(e) => Some(e),
-    }
-  }
+  /// an optional field '{0}' was absent when en/decoding protobuf {1}
+  OptionalFieldAbsent(String, String),
+  /// an invalid state {0} was detected when en/decoding protobuf {1}
+  FieldCompositionWasIncorrect(String, String),
+  /// an error {0} occurred when en/decoding a protobuf map for the type {1}
+  MapStringCodingFailed(String, String),
+  /// an io error {0} was raised internally
+  Io(#[from] io::Error),
+  /// a prost encoding error {0} was raised internally
+  Encode(#[from] prost::EncodeError),
+  /// a prost decoding error {0} was raised internally
+  Decode(#[from] prost::DecodeError),
 }
 
 /// ???
-#[derive(Debug)]
+#[derive(Debug, Display, Error)]
 pub enum Error {
-  ProtobufEncodingError(ProtobufCodingFailure),
-  ProtobufDecodingError(ProtobufCodingFailure),
-  Store(StoreError),
-  Signal(SignalProtocolError),
-}
-
-impl fmt::Display for Error {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    /* TODO: what to put here? this impl is needed for [error::Error]. */
-    write!(f, "{:?}", self)
-  }
-}
-
-impl error::Error for Error {
-  fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-    match self {
-      Self::ProtobufEncodingError(e) | Self::ProtobufDecodingError(e) => Some(e),
-      Self::Store(_) => None,
-      Self::Signal(e) => Some(e),
-    }
-  }
+  /// an error {0} occurred when encoding a protobuf
+  ProtobufEncodingError(#[source] ProtobufCodingFailure),
+  /// an error {0} occurred when decoding a protobuf
+  ProtobufDecodingError(#[source] ProtobufCodingFailure),
+  /// an error {0} was raised internally
+  Store(#[from] StoreError),
+  /// an error {0} was raised internally
+  Signal(#[from] SignalProtocolError),
 }
 
 impl From<prost::EncodeError> for Error {
@@ -78,12 +52,6 @@ impl From<prost::EncodeError> for Error {
 impl From<prost::DecodeError> for Error {
   fn from(err: prost::DecodeError) -> Error {
     Error::ProtobufDecodingError(ProtobufCodingFailure::Decode(err))
-  }
-}
-
-impl From<SignalProtocolError> for Error {
-  fn from(err: SignalProtocolError) -> Error {
-    Error::Signal(err)
   }
 }
 

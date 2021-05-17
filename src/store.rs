@@ -16,7 +16,9 @@ pub mod proto {
 use crate::error::Error;
 
 use async_trait::async_trait;
+use displaydoc::Display;
 use libsignal_protocol as signal;
+use thiserror::Error;
 
 use std::marker::PhantomData;
 
@@ -46,16 +48,12 @@ pub struct Store<
   pub _record: PhantomData<Record>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Display, Error)]
 pub enum StoreError {
-  NonMatchingStoreIdentity(signal::IdentityKeyPair),
-  NonMatchingStoreSeed(signal::SessionSeed),
-}
-
-impl From<StoreError> for Error {
-  fn from(value: StoreError) -> Self {
-    Error::Store(value)
-  }
+  /// the stored identity {0:?} did not match the expected key pair {1:?}
+  NonMatchingStoreIdentity(signal::IdentityKeyPair, signal::IdentityKeyPair),
+  /// the stored seed {0:?} did not match the expected seed {1:?}
+  NonMatchingStoreSeed(signal::SessionSeed, signal::SessionSeed),
 }
 
 pub mod conversions {
@@ -72,6 +70,7 @@ pub mod conversions {
   use std::collections::HashMap;
   use std::convert::TryFrom;
 
+  /* TODO: use property-based testing to validate these conversions (with TryFrom)! */
   #[derive(Clone, Debug)]
   pub struct IdStore(pub signal::InMemIdentityKeyStore);
 
@@ -94,19 +93,21 @@ pub mod conversions {
         signal_key_pair,
         session_seed,
         known_keys,
-      } = value;
+      } = value.clone();
       let encoded_signal_key_pair: Vec<u8> = signal_key_pair.ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `signal_key_pair` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `signal_key_pair` field!"),
+          format!("{:?}", value),
+        ))
       })?;
       let decoded_signal_key_pair =
         signal::IdentityKeyPair::try_from(encoded_signal_key_pair.as_ref())?;
       let id: signal::SessionSeed = session_seed
         .ok_or_else(|| {
-          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-            "failed to find `session_seed` field!"
-          )))
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            format!("failed to find `session_seed` field!"),
+            format!("{:?}", value),
+          ))
         })?
         .into();
       let known_keys: HashMap<signal::ProtocolAddress, signal::IdentityKey> = known_keys
@@ -371,7 +372,7 @@ pub mod conversions {
   impl TryFrom<proto::SenderKeyStore> for signal::InMemSenderKeyStore {
     type Error = Error;
     fn try_from(value: proto::SenderKeyStore) -> Result<Self, Error> {
-      let proto::SenderKeyStore { keys } = value;
+      let proto::SenderKeyStore { keys } = value.clone();
       let keys = keys
         .into_iter()
         .map(|(merged_address_uuid, record)| {
@@ -379,7 +380,7 @@ pub mod conversions {
             Error::ProtobufDecodingError(ProtobufCodingFailure::MapStringCodingFailed(format!(
               "failed to decode an address and uuid from a string used as a protobuf map key! was: '{}'",
               merged_address_uuid
-            )))
+            ), format!("{:?}", value)))
           })?;
           let address: signal::ProtocolAddress =
             ExternalIdentity::from_unambiguous_string(
@@ -390,7 +391,7 @@ pub mod conversions {
               Error::ProtobufDecodingError(ProtobufCodingFailure::MapStringCodingFailed(format!(
                 "failed ({:?}) to parse uuid from a string used as a protobuf map key! was: '{}'",
                 e, merged_address_uuid
-              )))
+              ), format!("{:?}", value)))
             })?;
           let record = signal::SenderKeyRecord::deserialize(&record)?;
           Ok(((Cow::Owned(address), uuid), record))
@@ -850,11 +851,15 @@ pub mod file_persistence {
             if key_pair != stored_identity {
               return Err(Error::Store(StoreError::NonMatchingStoreIdentity(
                 stored_identity,
+                key_pair,
               )));
             }
             let stored_seed = store.get_local_registration_id(None).await?;
             if id != stored_seed {
-              return Err(Error::Store(StoreError::NonMatchingStoreSeed(stored_seed)));
+              return Err(Error::Store(StoreError::NonMatchingStoreSeed(
+                stored_seed,
+                id,
+              )));
             }
             store
           }

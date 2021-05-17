@@ -56,18 +56,20 @@ impl TryFrom<proto::CryptographicIdentity> for CryptographicIdentity {
     let proto::CryptographicIdentity {
       signal_key_pair,
       seed,
-    } = value;
+    } = value.clone();
     let encoded_key_pair: Vec<u8> = signal_key_pair.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `signal_key_pair` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `signal_key_pair` field!",),
+        format!("{:?}", value),
+      ))
     })?;
     let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
     let seed: signal::SessionSeed = seed
       .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `seed` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `seed` field!",),
+          format!("{:?}", value),
+        ))
       })?
       .into();
     Ok(Self {
@@ -109,7 +111,7 @@ impl ExternalIdentity {
         Error::ProtobufDecodingError(ProtobufCodingFailure::MapStringCodingFailed(format!(
           "failed to decode an address from a string used as a protobuf map key! was: '{}'",
           s
-        )))
+        ), s.to_string()))
       })
       .and_then(|slash_index| {
         let address_str = &s[..slash_index];
@@ -120,7 +122,7 @@ impl ExternalIdentity {
             Error::ProtobufDecodingError(ProtobufCodingFailure::MapStringCodingFailed(format!(
               "failed ({:?}) to parse device id from a string used as a protobuf map key! was: '{}'",
               e, s
-            )))
+            ), s.to_string()))
           })?
           .into();
         Ok(Self {
@@ -167,17 +169,19 @@ impl From<ExternalIdentity> for proto::Address {
 impl TryFrom<proto::Address> for ExternalIdentity {
   type Error = Error;
   fn try_from(proto_message: proto::Address) -> Result<Self, Error> {
-    let proto::Address { name, device_id } = proto_message;
+    let proto::Address { name, device_id } = proto_message.clone();
     let name = name.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `name` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `name` field!"),
+        format!("{:?}", proto_message),
+      ))
     })?;
     let device_id: signal::DeviceId = device_id
       .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `device_id` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `device_id` field!"),
+          format!("{:?}", proto_message),
+        ))
       })?
       .into();
     Ok(Self { name, device_id })
@@ -260,16 +264,18 @@ impl From<Identity> for proto::Identity {
 impl TryFrom<proto::Identity> for Identity {
   type Error = Error;
   fn try_from(proto_message: proto::Identity) -> Result<Self, Error> {
-    let proto::Identity { key_pair, address } = proto_message;
+    let proto::Identity { key_pair, address } = proto_message.clone();
     let key_pair: proto::CryptographicIdentity = key_pair.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `key_pair` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `key_pair` field!"),
+        format!("{:?}", proto_message),
+      ))
     })?;
     let address: proto::Address = address.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `signal_address` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `signal_address` field!"),
+        format!("{:?}", proto_message),
+      ))
     })?;
     Ok(Self {
       crypto: CryptographicIdentity::try_from(key_pair)?,

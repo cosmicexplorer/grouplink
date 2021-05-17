@@ -2,183 +2,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 //! ???
-//!
-//!```
-//! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::{identity::*, session::*, store::{file_persistence::*, conversions::*, *}};
-//! use grouplink::session::PreKeyBundle;
-//! use libsignal_protocol::*;
-//! use rand::{self, Rng};
-//! use uuid::Uuid;
-//! use futures::executor::block_on;
-//! use std::convert::{TryFrom, TryInto};
-//! use std::path::PathBuf;
-//!
-//! // Create a new identity.
-//! let alice = Identity::generate((), &mut rand::thread_rng());
-//! let alice_sealed = SealedSenderIdentity::generate(alice.external.clone(),
-//!                                                   &mut rand::thread_rng());
-//! let alice_address: ProtocolAddress = alice.external.clone().into();
-//!
-//! // Create a mutable store.
-//! let alice_store_request = DirectoryStoreRequest {
-//!   path: PathBuf::from("/home/cosmicexplorer/alice"),
-//!   id: alice.crypto,
-//!   behavior: ExtractionBehavior::OverwriteWithDefault,
-//!  };
-//! let mut alice_store =
-//!   block_on(FileStore::initialize_file_backed_store_with_default(
-//!              alice_store_request.into_layout()?))?;
-//!
-//! // Create a destination identity.
-//! let bob = Identity::generate((), &mut rand::thread_rng());
-//! let bob_sealed = SealedSenderIdentity::generate(bob.external.clone(),
-//!                                                 &mut rand::thread_rng());
-//! let bob_address: ProtocolAddress = bob.external.clone().into();
-//! let bob_store_request = DirectoryStoreRequest {
-//!   path: PathBuf::from("/home/cosmicexplorer/bob"),
-//!   id: bob.crypto,
-//!   behavior: ExtractionBehavior::OverwriteWithDefault,
-//! };
-//! let mut bob_store =
-//!   block_on(FileStore::initialize_file_backed_store_with_default(
-//!              bob_store_request.into_layout()?))?;
-//!
-//! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
-//! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
-//! let bob_signed_pre_key =
-//!   block_on(SignedPreKey::intern(
-//!              SignedPreKeyRequest::generate((), &mut rand::thread_rng()),
-//!              &mut bob_store.identity_store,
-//!              &mut bob_store.signed_pre_key_store,
-//!              &mut rand::thread_rng()))?;
-//! let bob_one_time_pre_key =
-//!   block_on(OneTimePreKey::intern(
-//!              OneTimePreKeyRequest::generate((), &mut rand::thread_rng()),
-//!              &mut bob_store.pre_key_store))?;
-//!
-//! // Generate the pre-key bundle.
-//! let bob_pre_key_bundle = PreKeyBundle::new(
-//!   block_on(PreKeyBundleRequest::create(bob.external.clone(),
-//!                                        bob_signed_pre_key,
-//!                                        bob_one_time_pre_key,
-//!                                        &bob_store.identity_store))?)?;
-//! let encoded_pre_key_bundle: Box<[u8]> = bob_pre_key_bundle.try_into()?;
-//!
-//! // Encrypt a message.
-//! let decoded_pre_key_bundle = PreKeyBundle::try_from(encoded_pre_key_bundle.as_ref())?;
-//! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
-//!
-//! // SEALED SENDER STUFF!
-//!
-//! let trust_root = KeyPair::generate(&mut rand::thread_rng());
-//! let server_key = KeyPair::generate(&mut rand::thread_rng());
-//!
-//! let alice_server_cert =
-//!     ServerCertificate::new(1, server_key.public_key, &trust_root.private_key,
-//!                            &mut rand::thread_rng())?;
-//! let bob_server_cert =
-//!     ServerCertificate::new(1, server_key.public_key, &trust_root.private_key,
-//!                            &mut rand::thread_rng())?;
-//!
-//! // Very far in the future.
-//! let expires = 2605722925;
-//!
-//! let alice_sender_certificate = SenderCertificate::new(
-//!     alice.external.name.clone(),
-//!     None,
-//!     *alice.crypto.inner.public_key(),
-//!     alice.external.device_id,
-//!     expires,
-//!     alice_server_cert,
-//!     &server_key.private_key,
-//!     &mut rand::thread_rng(),
-//! )?;
-//! let alice_sender_cert = SenderCert {
-//!   inner: alice_sender_certificate,
-//!   trust_root: trust_root.public_key,
-//! };
-//!
-//! let bob_sender_certificate = SenderCertificate::new(
-//!     bob.external.name.clone(),
-//!     None,
-//!     *bob.crypto.inner.public_key(),
-//!     bob.external.device_id,
-//!     expires,
-//!     bob_server_cert,
-//!     &server_key.private_key,
-//!     &mut rand::thread_rng(),
-//! )?;
-//! let bob_sender_cert = SenderCert {
-//!   inner: bob_sender_certificate,
-//!   trust_root: trust_root.public_key,
-//! };
-//!
-//! let initial_message =
-//!   block_on(SealedSenderMessage::intern(
-//!              SealedSenderMessageRequest {
-//!                bundle: decoded_pre_key_bundle,
-//!                sender_cert: alice_sender_cert,
-//!                ptext: &ptext,
-//!              },
-//!              &mut alice_store.session_store,
-//!              &mut alice_store.identity_store,
-//!              &mut rand::thread_rng(),
-//!   ))?;
-//! let encoded_sealed_sender_message: Box<[u8]> = initial_message.into();
-//!
-//! // Decrypt the sealed-sender message.
-//! let decoded_sealed_sender_message =
-//!   SealedSenderMessage::try_from(encoded_sealed_sender_message.as_ref())?;
-//! let message_result =
-//!   block_on(SealedSenderMessageResult::intern(
-//!              SealedSenderDecryptionRequest {
-//!                inner: decoded_sealed_sender_message,
-//!                local_identity: bob_sealed,
-//!              },
-//!              &mut bob_store.identity_store,
-//!              &mut bob_store.session_store,
-//!              &mut bob_store.pre_key_store,
-//!              &mut bob_store.signed_pre_key_store,
-//!   ))?;
-//!
-//! assert!(message_result.plaintext.as_ref() == ptext.as_ref());
-//! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
-//!
-//! //?
-//! let bob_text = "oh ok";
-//! let bob_follow_up =
-//!   block_on(SealedSenderMessage::intern_followup(
-//!              SealedSenderFollowupMessageRequest {
-//!                target: message_result.sender.inner,
-//!                sender_cert: bob_sender_cert,
-//!                ptext: bob_text.as_bytes(),
-//!              },
-//!              &mut bob_store.session_store,
-//!              &mut bob_store.identity_store,
-//!              &mut rand::thread_rng()))?;
-//! let encoded_follow_up_message: Box<[u8]> = bob_follow_up.into();
-//!
-//! let decoded_follow_up_message =
-//!   SealedSenderMessage::try_from(encoded_follow_up_message.as_ref())?;
-//! let alice_incoming =
-//!   block_on(SealedSenderMessageResult::intern(
-//!     SealedSenderDecryptionRequest {
-//!       inner: decoded_follow_up_message,
-//!       local_identity: alice_sealed,
-//!     },
-//!     &mut alice_store.identity_store,
-//!     &mut alice_store.session_store,
-//!     &mut alice_store.pre_key_store,
-//!     &mut alice_store.signed_pre_key_store,
-//!   ))?.plaintext;
-//!
-//! assert!(&alice_incoming[..] == bob_text.as_bytes());
-//! assert!("oh ok" == std::str::from_utf8(alice_incoming.as_ref()).unwrap());
-//!
-//! # Ok(())
-//! # }
-//!```
 
 pub mod proto {
   /* Ensure the generated identity.proto outputs are available under [super::identity] within the
@@ -423,23 +246,26 @@ impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
       signed_pre_key_public,
       signed_pre_key_signature,
       identity_key,
-    } = value;
+    } = value.clone();
     let destination: ExternalIdentity = destination
       .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `destination` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `destination` field!"),
+          format!("{:?}", value),
+        ))
       })?
       .try_into()?;
     let registration_id: u32 = registration_id.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `registration_id` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `registration_id` field!"),
+        format!("{:?}", value),
+      ))
     })?;
     let device_id: u32 = device_id.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `device_id` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `device_id` field!"),
+        format!("{:?}", value),
+      ))
     })?;
     let pre_key_id: Option<signal::PreKeyId> = pre_key_id.map(|key| key.into());
     let pre_key_public: Option<signal::PublicKey> = match pre_key_public {
@@ -453,33 +279,38 @@ impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
       _ => {
         return Err(Error::ProtobufDecodingError(ProtobufCodingFailure::FieldCompositionWasIncorrect(
           format!("if either the fields `pre_key_id` or `pre_key_public` are provided, then *BOTH* must be provided!"),
+          format!("{:?}", value)
         )))
       }
     };
     let signed_pre_key_id: signal::SignedPreKeyId = signed_pre_key_id
       .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `signed_pre_key_id` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `signed_pre_key_id` field!"),
+          format!("{:?}", value),
+        ))
       })?
       .into();
     let signed_pre_key_public: signal::PublicKey = signed_pre_key_public.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `signed_pre_key_public` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `signed_pre_key_public` field!"),
+        format!("{:?}", value),
+      ))
     })?[..]
       .try_into()?;
     let signed_pre_key_signature: Vec<u8> = signed_pre_key_signature
       .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `signed_pre_key_signature` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `signed_pre_key_signature` field!"),
+          format!("{:?}", value),
+        ))
       })?
       .to_vec();
     let identity_key: signal::IdentityKey = identity_key.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-        "failed to find `identity_key` field!"
-      )))
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `identity_key` field!"),
+        format!("{:?}", value),
+      ))
     })?[..]
       .try_into()?;
     Ok(Self {
@@ -628,21 +459,23 @@ impl TryFrom<proto::SealedSenderMessage> for SealedSenderMessage {
     let proto::SealedSenderMessage {
       trust_root_public_key,
       encrypted_sealed_sender_message,
-    } = value;
+    } = value.clone();
     let trust_root_public_key = signal::PublicKey::try_from(
       trust_root_public_key
         .ok_or_else(|| {
-          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-            "failed to find `trust_root_public_key` field!"
-          )))
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            format!("failed to find `trust_root_public_key` field!"),
+            format!("{:?}", value),
+          ))
         })?
         .as_ref(),
     )?;
     let encrypted_sealed_sender_message: Box<[u8]> = encrypted_sealed_sender_message
       .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(format!(
-          "failed to find `encrypted_sealed_sender_message` field!"
-        )))
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `encrypted_sealed_sender_message` field!"),
+          format!("{:?}", value),
+        ))
       })?
       .into_boxed_slice();
     Ok(Self {
