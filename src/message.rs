@@ -46,10 +46,10 @@
 //! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
 //!
 //! // Encrypt a message.
-//! let initial_message = encrypt_sealed_sender_initial_message(
+//! let initial_message = encrypt_initial_message(
 //!   SealedSenderMessageRequest {
 //!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
-//!     sender_cert: generate_sender_cert(alice.clone(), SenderCertTTL::default())?,
+//!     sender_cert: generate_sender_cert(alice_client.clone(), alice.crypto, SenderCertTTL::default())?,
 //!     ptext: "asdf".as_bytes(),
 //!   },
 //!   &mut alice_store,
@@ -57,7 +57,7 @@
 //! let encoded_sealed_sender_message: Box<[u8]> = Message::Sealed(initial_message).try_into()?;
 //!
 //! // Decrypt the sealed-sender message.
-//! let message_result = decrypt_sealed_sender_message(
+//! let message_result = decrypt_message(
 //!   SealedSenderDecryptionRequest {
 //!     inner: Message::try_from(encoded_sealed_sender_message.as_ref())?.assert_sealed()?,
 //!     local_identity: bob_client.clone(),
@@ -65,21 +65,21 @@
 //!   &mut bob_store,
 //! ).await?;
 //!
-//! assert!(message_result.sender.inner == alice.external);
+//! assert!(message_result.sender == alice_client);
 //! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
 //!
 //! // Now send a message back to Alice.
-//! let bob_follow_up = encrypt_sealed_sender_followup_message(
+//! let bob_follow_up = encrypt_followup_message(
 //!   SealedSenderFollowupMessageRequest {
 //!     target: message_result.sender.inner,
-//!     sender_cert: generate_sender_cert(bob.clone(), SenderCertTTL::default())?,
+//!     sender_cert: generate_sender_cert(bob_client.clone(), bob.crypto, SenderCertTTL::default())?,
 //!     ptext: "oh ok".as_bytes(),
 //!   },
 //!   &mut bob_store,
 //! ).await?;
 //! let encoded_follow_up_message: Box<[u8]> = Message::Sealed(bob_follow_up).try_into()?;
 //!
-//! let alice_incoming = decrypt_sealed_sender_message(
+//! let alice_incoming = decrypt_message(
 //!   SealedSenderDecryptionRequest {
 //!     inner: Message::try_from(encoded_follow_up_message.as_ref())?.assert_sealed()?,
 //!     local_identity: alice_client.clone(),
@@ -87,7 +87,7 @@
 //!   &mut alice_store,
 //! ).await?;
 //!
-//! assert!(alice_incoming.sender.inner == bob.external);
+//! assert!(alice_incoming.sender == bob_client);
 //! assert!("oh ok" == std::str::from_utf8(alice_incoming.plaintext.as_ref()).unwrap());
 //!
 //! # Ok(())

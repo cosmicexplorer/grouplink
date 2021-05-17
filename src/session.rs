@@ -509,7 +509,7 @@ impl SealedSenderMessage {
   }
 }
 
-pub async fn encrypt_sealed_sender_initial_message<
+pub async fn encrypt_initial_message<
   Record,
   S: signal::SessionStore + Persistent<Record>,
   PK: signal::PreKeyStore + Persistent<Record>,
@@ -529,7 +529,7 @@ pub async fn encrypt_sealed_sender_initial_message<
   .await
 }
 
-pub async fn encrypt_sealed_sender_followup_message<
+pub async fn encrypt_followup_message<
   Record,
   S: signal::SessionStore + Persistent<Record>,
   PK: signal::PreKeyStore + Persistent<Record>,
@@ -689,7 +689,7 @@ impl SealedSenderMessageResult {
   }
 }
 
-pub async fn decrypt_sealed_sender_message<
+pub async fn decrypt_message<
   Record,
   S: signal::SessionStore + Persistent<Record>,
   PK: signal::PreKeyStore + Persistent<Record>,

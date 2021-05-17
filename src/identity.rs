@@ -316,7 +316,7 @@ impl fmt::Display for Identity {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SealedSenderIdentity {
   pub inner: ExternalIdentity,
   pub e164: Option<String>,
@@ -406,14 +406,22 @@ impl default::Default for SenderCertTTL {
   }
 }
 
-pub fn generate_sender_cert(id: Identity, ttl: SenderCertTTL) -> Result<SenderCert, Error> {
+pub fn generate_sender_cert(
+  id: SealedSenderIdentity,
+  crypto: CryptographicIdentity,
+  ttl: SenderCertTTL,
+) -> Result<SenderCert, Error> {
+  let SealedSenderIdentity {
+    inner: external,
+    e164,
+  } = id;
   let (ServerCert { inner, trust_root }, server_key) = generate_server_cert()?;
   Ok(SenderCert {
     inner: signal::SenderCertificate::new(
-      id.external.name.clone(),
-      None,
-      *id.crypto.inner.public_key(),
-      id.external.device_id,
+      external.name.clone(),
+      e164,
+      *crypto.inner.public_key(),
+      external.device_id,
       ttl.calculate_expires_timestamp()?,
       inner,
       &server_key.private_key,
