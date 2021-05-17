@@ -6,7 +6,6 @@
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
 //! use grouplink::{identity::*, session::*, message::*, store::file_persistence::*};
-//! use libsignal_protocol as signal;
 //! # use futures::executor::block_on;
 //! use std::convert::{TryFrom, TryInto};
 //! use std::path::PathBuf;
@@ -47,13 +46,11 @@
 //! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
 //!
 //! // Encrypt a message.
-//! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
-//!
 //! let initial_message = encrypt_sealed_sender_initial_message(
 //!   SealedSenderMessageRequest {
 //!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
 //!     sender_cert: generate_sender_cert(alice.clone(), SenderCertTTL::default())?,
-//!     ptext: &ptext,
+//!     ptext: "asdf".as_bytes(),
 //!   },
 //!   &mut alice_store,
 //! ).await?;
