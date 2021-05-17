@@ -4,6 +4,7 @@
 //! ???
 
 use crate::identity::IdentityError;
+use crate::message::MessageError;
 use crate::store::StoreError;
 
 use displaydoc::Display;
@@ -40,6 +41,8 @@ pub enum Error {
   ProtobufDecodingError(#[source] ProtobufCodingFailure),
   /// an identity error {0} was raised internally
   Identity(#[from] IdentityError),
+  /// a message error {0} was raised internally
+  Message(#[from] MessageError),
   /// a store error {0} was raised internally
   Store(#[from] StoreError),
   /// a signal protocol error {0} was raised internally

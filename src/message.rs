@@ -7,16 +7,13 @@
 //! # fn main() -> Result<(), grouplink::error::Error> {
 //! use grouplink::{identity::*, session::*, message::*, store::{file_persistence::*, conversions::*, *}};
 //! use libsignal_protocol as signal;
-//! use rand::{self, Rng};
-//! use uuid::Uuid;
 //! use futures::executor::block_on;
 //! use std::convert::{TryFrom, TryInto};
 //! use std::path::PathBuf;
 //!
 //! // Create a new identity.
 //! let alice = generate_identity();
-//! let alice_sealed = generate_sealed_sender_identity(alice.external.clone());
-//! let alice_address: signal::ProtocolAddress = alice.external.clone().into();
+//! let alice_client = generate_sealed_sender_identity(alice.external.clone());
 //!
 //! // Create a mutable store.
 //! let mut alice_store =
@@ -28,8 +25,7 @@
 //!
 //! // Create a destination identity.
 //! let bob = generate_identity();
-//! let bob_sealed = generate_sealed_sender_identity(bob.external.clone());
-//! let bob_address: signal::ProtocolAddress = bob.external.clone().into();
+//! let bob_client = generate_sealed_sender_identity(bob.external.clone());
 //! let mut bob_store =
 //!   block_on(initialize_file_backed_store(DirectoryStoreRequest {
 //!     path: PathBuf::from("/home/cosmicexplorer/bob"),
@@ -51,21 +47,13 @@
 //! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
 //!
 //! // Encrypt a message.
-//! let decoded_pre_key_bundle = match Message::try_from(encoded_pre_key_bundle.as_ref())? {
-//!   Message::Bundle(x) => x,
-//!   _ => unreachable!(),
-//! };
 //! let ptext: Box<[u8]> = Box::new(b"asdf".to_owned());
-//!
-//! // SEALED SENDER STUFF!
-//! let alice_sender_cert = generate_sender_cert(alice.clone(), SenderCertTTL::default())?;
-//! let bob_sender_cert = generate_sender_cert(bob.clone(), SenderCertTTL::default())?;
 //!
 //! let initial_message =
 //!   block_on(encrypt_sealed_sender_initial_message(
 //!              SealedSenderMessageRequest {
-//!                bundle: decoded_pre_key_bundle,
-//!                sender_cert: alice_sender_cert,
+//!                bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+//!                sender_cert: generate_sender_cert(alice.clone(), SenderCertTTL::default())?,
 //!                ptext: &ptext,
 //!              },
 //!              &mut alice_store,
@@ -73,48 +61,37 @@
 //! let encoded_sealed_sender_message: Box<[u8]> = Message::Sealed(initial_message).try_into()?;
 //!
 //! // Decrypt the sealed-sender message.
-//! let decoded_sealed_sender_message = match Message::try_from(encoded_sealed_sender_message.as_ref())? {
-//!   Message::Sealed(x) => x,
-//!   _ => unreachable!(),
-//! };
 //! let message_result =
 //!   block_on(decrypt_sealed_sender_message(
 //!              SealedSenderDecryptionRequest {
-//!                inner: decoded_sealed_sender_message,
-//!                local_identity: bob_sealed,
+//!                inner: Message::try_from(encoded_sealed_sender_message.as_ref())?.assert_sealed()?,
+//!                local_identity: bob_client,
 //!              },
 //!              &mut bob_store,
 //!   ))?;
 //!
-//! assert!(message_result.plaintext.as_ref() == ptext.as_ref());
 //! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
 //!
-//! //?
-//! let bob_text = "oh ok";
+//! // Now send a message back to Alice.
 //! let bob_follow_up =
 //!   block_on(encrypt_sealed_sender_followup_message(
 //!              SealedSenderFollowupMessageRequest {
 //!                target: message_result.sender.inner,
-//!                sender_cert: bob_sender_cert,
-//!                ptext: bob_text.as_bytes(),
+//!                sender_cert: generate_sender_cert(bob.clone(), SenderCertTTL::default())?,
+//!                ptext: "oh ok".as_bytes(),
 //!              },
 //!              &mut bob_store))?;
 //! let encoded_follow_up_message: Box<[u8]> = Message::Sealed(bob_follow_up).try_into()?;
 //!
-//! let decoded_follow_up_message = match Message::try_from(encoded_follow_up_message.as_ref())? {
-//!   Message::Sealed(x) => x,
-//!   _ => unreachable!(),
-//! };
 //! let alice_incoming =
 //!   block_on(decrypt_sealed_sender_message(
 //!     SealedSenderDecryptionRequest {
-//!       inner: decoded_follow_up_message,
-//!       local_identity: alice_sealed,
+//!       inner: Message::try_from(encoded_follow_up_message.as_ref())?.assert_sealed()?,
+//!       local_identity: alice_client,
 //!     },
 //!     &mut alice_store,
 //!   ))?.plaintext;
 //!
-//! assert!(&alice_incoming[..] == bob_text.as_bytes());
 //! assert!("oh ok" == std::str::from_utf8(alice_incoming.as_ref()).unwrap());
 //!
 //! # Ok(())
@@ -136,14 +113,39 @@ use crate::error::{Error, ProtobufCodingFailure};
 use crate::session::{PreKeyBundle, SealedSenderMessage};
 use crate::util::encode_proto_message;
 
+use displaydoc::Display;
 use prost::Message as _;
+use thiserror::Error;
 
 use std::convert::{TryFrom, TryInto};
+
+#[derive(Debug, Error, Display)]
+pub enum MessageError {
+  /// message {0:?} must be a bundle
+  WasNotBundle(Message),
+  /// message {0:?} must be a sealed-sender message
+  WasNotSealed(Message),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
   Bundle(PreKeyBundle),
   Sealed(SealedSenderMessage),
+}
+
+impl Message {
+  pub fn assert_bundle(self) -> Result<PreKeyBundle, MessageError> {
+    match self.clone() {
+      Self::Bundle(x) => Ok(x),
+      _ => Err(MessageError::WasNotBundle(self)),
+    }
+  }
+  pub fn assert_sealed(self) -> Result<SealedSenderMessage, MessageError> {
+    match self.clone() {
+      Self::Sealed(x) => Ok(x),
+      _ => Err(MessageError::WasNotSealed(self)),
+    }
+  }
 }
 
 impl TryFrom<Message> for proto::Message {
