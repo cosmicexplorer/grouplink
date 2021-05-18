@@ -1,8 +1,8 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! Define the atomic types of communications between individual identities in the
-//! [grouplink protocol](crate).
+//! Define the atomic types of communications between individual [identity](crate::identity)
+//! instances in the [grouplink protocol](crate).
 
 /// [prost] structs for serializing a [Message].
 pub mod proto {

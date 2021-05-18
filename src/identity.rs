@@ -1,18 +1,31 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+//! Define the atomic forms of identity in the [grouplink protocol](crate).
+//!
+//! This covers objects with private key information as well as public key information.
+
+/// [prost] structs for serializing types of identities so they can be revived in a persistent
+/// [store](crate::store).
 pub mod proto {
+  #![allow(missing_docs)]
   include!(concat!(env!("OUT_DIR"), "/grouplink.proto.identity.rs"));
 }
 
 use crate::util::encode_proto_message;
 
+#[cfg(doc)]
+use crate::message::Message;
+
 use displaydoc::Display;
 use libsignal_protocol as signal;
-use prost::Message;
+use prost::Message as _;
 use rand::{self, CryptoRng, Rng};
 use thiserror::Error;
 use uuid::Uuid;
+
+#[cfg(doc)]
+use libsignal_protocol::{IdentityKeyStore, ProtocolAddress};
 
 use std::{
   convert::{AsRef, From, TryFrom},
@@ -22,8 +35,20 @@ use std::{
 
 use crate::error::{Error, ProtobufCodingFailure};
 
+/// Types of errors that can occur when validating certain fields of atomic identities.
+#[derive(Debug, Error, Display)]
+pub enum IdentityError {
+  /// expiration ttl {1:?} was too long given the current time {0:?}
+  ExpirationIsTooFarInTheFuture(SystemTime, Duration),
+  /// a system time error {0} was raised internally
+  SystemTime(#[from] SystemTimeError),
+}
+
+/// Define a struct that can be created from cryptographically-random bits.
 #[cfg(not(test))]
 pub trait Spontaneous<Params> {
+  /// Create an instance of this object which is completely specified by the "static" `params` and
+  /// the "dynamic" state of `csprng`.
   fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
 }
 #[cfg(test)]
@@ -31,9 +56,16 @@ pub trait Spontaneous<Params>: fmt::Debug + Clone {
   fn generate<R: CryptoRng + Rng>(params: Params, csprng: &mut R) -> Self;
 }
 
+/// Specifies the public and private key information associated with an identity.
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct CryptographicIdentity {
+  /// The underlying identity construct from [libsignal_protocol].
+  ///
+  /// Returned by [IdentityKeyStore::get_identity_key_pair].
   pub inner: signal::IdentityKeyPair,
+  /// Used to reliably construct KDFs for this identity.
+  ///
+  /// Returned by [IdentityKeyStore::get_local_registration_id].
   pub seed: signal::SessionSeed,
 }
 
@@ -99,17 +131,26 @@ impl From<CryptographicIdentity> for Box<[u8]> {
   }
 }
 
+/// Specifies the outward-facing "address" of an identity so others can send messages to it.
+///
+/// Fungible with [ProtocolAddress], with helper methods for consistent serialization with
+/// "typeless" protobuf maps (see [ProtobufCodingFailure::MapStringCodingFailed]).
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct ExternalIdentity {
+  /// An arbitrary string of arbitrary length, typically representing a UUID. Unique per "identity".
   pub name: String,
+  /// A wrapper for a small positive number used to disambiguate different clients which represent
+  /// the same underlying identity.
   pub device_id: signal::DeviceId,
 }
 
 impl ExternalIdentity {
+  /// Return a string which reproduces this exact object from [Self::from_unambiguous_string].
   pub fn as_unambiguous_string(&self) -> String {
     format!("{}/{}", self.name, self.device_id)
   }
 
+  /// Deserialize from a string produced by [Self::as_unambiguous_string].
   pub fn from_unambiguous_string(s: &str) -> Result<Self, Error> {
     s.find('/')
       .ok_or_else(|| {
@@ -220,30 +261,14 @@ impl Spontaneous<()> for ExternalIdentity {
   }
 }
 
-/// ???
+/// Contains the cryptographic and external-facing components of a distinct identity.
 ///
-///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::identity::{Identity, ExternalIdentity, CryptographicIdentity, Spontaneous};
-/// use std::convert::TryFrom;
-///
-/// // Create a new identity.
-/// let crypto = CryptographicIdentity::generate((), &mut rand::thread_rng());
-/// let external = ExternalIdentity::generate((), &mut rand::thread_rng());
-/// let id = Identity { crypto, external };
-///
-/// // Serialize the identity.
-/// let buf: Box<[u8]> = id.clone().into();
-/// // Deserialize the identity.
-/// let resurrected = Identity::try_from(buf.as_ref())?;
-///
-/// assert!(id == resurrected);
-/// # Ok(())
-/// # }
-///```
+/// Can be immediately generated at any time with [generate_identity].
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Identity {
+  #[allow(missing_docs)]
   pub crypto: CryptographicIdentity,
+  #[allow(missing_docs)]
   pub external: ExternalIdentity,
 }
 
@@ -255,6 +280,28 @@ impl Spontaneous<()> for Identity {
   }
 }
 
+/// Produce an entirely new identity from random state.
+///
+/// This identity is "anonymous" as it has no relationship to any other identity ever produced:
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::identity::*;
+/// use std::convert::TryFrom;
+///
+/// // Create a new identity.
+/// let id = generate_identity();
+/// // The identity is unique.
+/// assert!(id != generate_identity());
+///
+/// // Serialize the identity.
+/// let buf: Box<[u8]> = id.clone().into();
+/// // Deserialize the identity.
+/// let resurrected = Identity::try_from(buf.as_ref())?;
+///
+/// assert!(id == resurrected);
+/// # Ok(())
+/// # }
+///```
 pub fn generate_identity() -> Identity {
   Identity::generate((), &mut rand::thread_rng())
 }
@@ -313,13 +360,22 @@ impl fmt::Display for Identity {
   }
 }
 
+/// An extension of [ExternalIdentity] which differentiates between different clients representing
+/// the same identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SealedSenderIdentity {
+  /// The external-facing identity.
   pub inner: ExternalIdentity,
+  /// An optional string which uniquely specifies this client, similar to
+  /// [ExternalIdentity::device_id].
+  ///
+  /// Used by [Message::Sealed] to avoid sending sealed-sender messages to the current client
+  /// by accident.
   pub e164: Option<String>,
 }
 
 impl SealedSenderIdentity {
+  /// Remove the optional [Self::e164] field to avoid leaking that info to other identities.
   pub fn stripped_e164(&self) -> Self {
     let Self { inner, .. } = self;
     Self {
@@ -340,6 +396,21 @@ impl Spontaneous<ExternalIdentity> for SealedSenderIdentity {
   }
 }
 
+/// Produce a unique, anonymous client instance representing the given `external` identity.
+///
+/// Consumed by [generate_sender_cert]. Mix and match with [generate_identity] as needed:
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::identity::*;
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+/// // Create a new client instance for this identity.
+/// # #[allow(unused_variables)]
+/// let alice_client = generate_sealed_sender_identity(alice.external.clone());
+/// # Ok(())
+/// # }
+///```
 pub fn generate_sealed_sender_identity(external: ExternalIdentity) -> SealedSenderIdentity {
   SealedSenderIdentity::generate(external, &mut rand::thread_rng())
 }
@@ -352,9 +423,15 @@ impl Spontaneous<()> for SealedSenderIdentity {
   }
 }
 
+/// One-time certificate object to validate each [Message::Sealed].
+///
+/// In the Signal app, this corresponds to information handled by the backend server. In the
+/// [grouplink](crate) model, this is generated for each new message to encrypt.
 #[derive(Debug, Clone)]
 pub struct ServerCert {
+  /// Underlying [libsignal_protocol] concept this relies on.
   pub inner: signal::ServerCertificate,
+  /// We generate a new unrelated [signal::KeyPair] instance for each [ServerCert].
   pub trust_root: signal::PublicKey,
 }
 
@@ -376,24 +453,28 @@ fn generate_server_cert() -> Result<(ServerCert, signal::KeyPair), Error> {
   ))
 }
 
+/// One-time certificate object to validate each [Message::Sealed].
+///
+/// In the Signal app, this corresponds to information the frontend client would hand off to the
+/// backend server to create a sealed-sender message. In the [grouplink](crate) model, this is newly
+/// generated for each sealed-sender message to encrypt.
 #[derive(Debug, Clone)]
 pub struct SenderCert {
+  /// Underlying [libsignal_protocol] concept this relies on.
   pub inner: signal::SenderCertificate,
+  /// We generate a new unrelated [signal::KeyPair] instance for each [ServerCert] and therefore
+  /// each [SenderCert]. See [ServerCert::trust_root].
   pub trust_root: signal::PublicKey,
 }
 
-#[derive(Debug, Error, Display)]
-pub enum IdentityError {
-  /// expiration ttl {1:?} was too long given the current time {0:?}
-  ExpirationIsTooFarInTheFuture(SystemTime, Duration),
-  /// a system time error {0} was raised internally
-  SystemTime(#[from] SystemTimeError),
-}
-
+/// Length of time which may pass before a [SenderCert] expires and cannot be used. Defaults to
+/// 1 day.
 #[derive(Debug, Copy, Clone)]
 pub struct SenderCertTTL(pub Duration);
 
 impl SenderCertTTL {
+  /// Calculate the unix timestamp after which the [SenderCert] will be considered "expired" and may
+  /// no longer be used to decrypt anything.
   pub fn calculate_expires_timestamp(self) -> Result<u64, IdentityError> {
     let now = SystemTime::now();
     Ok(
@@ -413,6 +494,25 @@ impl default::Default for SenderCertTTL {
   }
 }
 
+/// Create a one-time sender certificate to send a sealed-sender message. See [Message::Sealed].
+///
+/// Consumes the result of [generate_sealed_sender_identity] and [generate_identity]:
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::identity::*;
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+/// // Create a new client instance for this identity.
+/// let alice_client = generate_sealed_sender_identity(alice.external.clone());
+///
+/// // Create a sender certificate to send sealed-sender messages.
+/// # #[allow(unused_variables)]
+/// let sender_cert = generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
+///                                        SenderCertTTL::default())?;
+/// # Ok(())
+/// # }
+///```
 pub fn generate_sender_cert(
   id: SealedSenderIdentity,
   crypto: CryptographicIdentity,

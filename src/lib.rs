@@ -144,7 +144,7 @@ pub mod store;
 mod util;
 
 pub use identity::{
-  generate_identity, generate_sealed_sender_identity, generate_sender_cert, SenderCert,
+  generate_identity, generate_sealed_sender_identity, generate_sender_cert, Identity, SenderCert,
   SenderCertTTL,
 };
 pub use message::Message;
