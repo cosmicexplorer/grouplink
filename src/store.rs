@@ -791,22 +791,35 @@ pub mod file_persistence {
   }
 
   impl ExtractionBehavior {
+    fn should_try_extract(&self) -> bool {
+      match self {
+        Self::OverwriteWithDefault => false,
+        _ => true,
+      }
+    }
+
+    fn should_propagate_error(&self) -> bool {
+      match self {
+        Self::ReadOrError => true,
+        _ => false,
+      }
+    }
+
     pub async fn extract<P: Persistent<PathBuf>, F: FnOnce() -> P>(
       &self,
       path: PathBuf,
       make_default: F,
     ) -> Result<P, Error> {
-      let mut result = match self {
-        Self::OverwriteWithDefault => make_default(),
-        _ => match P::extract(path).await {
+      let mut result = if self.should_try_extract() {
+        match P::extract(path).await {
           Ok(store) => store,
-          Err(e) => match self {
-            Self::ReadOrError => {
-              return Err(e);
-            }
-            _ => make_default(),
-          },
-        },
+          Err(e) if self.should_propagate_error() => {
+            return Err(e);
+          }
+          _ => make_default(),
+        }
+      } else {
+        make_default()
       };
       result.persist().await?;
       Ok(result)
@@ -1043,9 +1056,9 @@ pub mod proptest_strategies {
   pub use super::in_memory_store::*;
   use crate::identity::CryptographicIdentity;
 
-  use tempdir::TempDir;
   use parking_lot::RwLock;
   use proptest::prelude::*;
+  use tempdir::TempDir;
 
   use std::path::PathBuf;
   use std::sync::Arc;
