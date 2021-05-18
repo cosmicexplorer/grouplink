@@ -5,17 +5,12 @@ syntax = "proto2";
 
 package grouplink.proto.identity;
 
+/* Serialization of [super::ExternalIdentity].
+ *
+ * This struct is a component of [crate::session::proto::PreKeyBundle]. */
 message Address {
+  /* From [super::ExternalIdentity::name] unmodified. */
   optional string name = 1;
+  /* From [super::ExternalIdentity::device_id] unmodified. */
   optional uint32 device_id = 2;
-}
-
-message CryptographicIdentity {
-  optional bytes signal_key_pair = 1;
-  optional uint32 seed = 2;
-}
-
-message Identity {
-  optional CryptographicIdentity key_pair = 1;
-  optional Address address = 2;
 }

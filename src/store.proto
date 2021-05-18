@@ -7,24 +7,51 @@ package grouplink.proto.store;
 
 import "identity.proto";
 
+/* Serialization of a [libsignal_protocol::IdentityKeyStore] implementation.
+ *
+ * [super::super::file_persistence::FileIdStore] will write this object to a file with [super::super::Persistent::persist].
+ */
 message IdentityKeyStore {
+  /* From [libsignal_protocol::InMemIdentityKeyStore::key_pair] unmodified. */
   optional bytes signal_key_pair = 1;
+  /* From [libsignal_protocol::InMemIdentityKeyStore::id] unmodified. */
   optional uint32 session_seed   = 2;
+  /* From [libsignal_protocol::InMemIdentityKeyStore::known_keys]. */
   map<string, bytes> known_keys  = 3;
 }
 
+/* Serialization of a [libsignal_protocol::PreKeyStore] implementation.
+ *
+ * [super::super::file_persistence::FilePreKeyStore] will write this object to a file with [super::super::Persistent::persist].
+ */
 message PreKeyStore {
+  /* From [libsignal_protocol::InMemPreKeyStore::pre_keys]. */
   map<uint32, bytes> pre_keys = 1;
 }
 
+/* Serialization of a [libsignal_protocol::SignedPreKeyStore] implementation.
+ *
+ * [super::super::file_persistence::FileSignedPreKeyStore] will write this object to a file with [super::super::Persistent::persist].
+ */
 message SignedPreKeyStore {
+  /* From [libsignal_protocol::InMemSignedPreKeyStore::signed_pre_keys]. */
   map<uint32, bytes> signed_pre_keys = 1;
 }
 
+/* Serialization of a [libsignal_protocol::SessionStore] implementation.
+ *
+ * [super::super::file_persistence::FileSessionStore] will write this object to a file with [super::super::Persistent::persist].
+ */
 message SessionStore {
+  /* From [libsignal_protocol::InMemSessionStore::sessions]. */
   map<string, bytes> sessions = 1;
 }
 
+/* Serialization of a [libsignal_protocol::SenderKeyStore] implementation.
+ *
+ * [super::super::file_persistence::FileSenderKeyStore] will write this object to a file with [super::super::Persistent::persist].
+ */
 message SenderKeyStore {
+  /* From [libsignal_protocol::InMemSenderKeyStore::keys]. */
   map<string, bytes> keys = 1;
 }

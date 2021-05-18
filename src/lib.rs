@@ -57,7 +57,7 @@
 //!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
 //!     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
 //!                                       SenderCertTTL::default())?,
-//!     ptext: "asdf".as_bytes(),
+//!     plaintext: "asdf".as_bytes(),
 //!   },
 //!   &mut alice_store,
 //! ).await?;
@@ -81,7 +81,7 @@
 //!     target: message_result.sender.inner,
 //!     sender_cert: generate_sender_cert(bob_client.stripped_e164(), bob.crypto,
 //!                                       SenderCertTTL::default())?,
-//!     ptext: "oh ok".as_bytes(),
+//!     plaintext: "oh ok".as_bytes(),
 //!   },
 //!   &mut bob_store,
 //! ).await?;

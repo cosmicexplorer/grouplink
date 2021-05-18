@@ -11,6 +11,7 @@ pub mod proto {
   pub use crate::identity::proto as identity;
   pub use crate::session::proto as session;
   mod proto {
+    #![allow(missing_docs)]
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.message.rs"));
   }
   #[doc(inline)]

@@ -7,20 +7,37 @@ package grouplink.proto.session;
 
 import "identity.proto";
 
-/* Signal doesn't appear to have this entire structure in a single place, so we recreate it here. */
+/* Encapsulates all the information needed to complete an [X3DH] key agreement. *See [super::super::PreKeyBundle].*
+ *
+ * [libsignal_protocol]'s protobuf messages don't seem to contain any message with the [Self::destination] field here. Most of the rest is shared with [libsignal_protocol::PreKeySignalMessage].
+ * **TODO: is this secure with sealed-sender?**
+ *
+ * [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
+ */
 message PreKeyBundle {
+  /* From [super::super::PreKeyBundle::destination] unmodified. */
   optional grouplink.proto.identity.Address destination = 1;
+  /* From [libsignal_protocol::PreKeySignalMessage::registration_id]. */
   optional uint32 registration_id                       = 2;
-  optional uint32 device_id                             = 3;
-  optional uint32 pre_key_id                            = 4;
-  optional bytes pre_key_public                         = 5;
-  optional uint32 signed_pre_key_id                     = 6;
-  optional bytes signed_pre_key_public                  = 7;
-  optional bytes signed_pre_key_signature               = 8;
-  optional bytes identity_key                           = 9;
+  /* From [libsignal_protocol::PreKeySignalMessage::pre_key_id]. */
+  optional uint32 pre_key_id                            = 3;
+  /* Public half of a [super::super::OneTimePreKey] to allow validating the bundle's signature against. */
+  optional bytes pre_key_public                         = 4;
+  /* From [libsignal_protocol::PreKeySignalMessage::signed_pre_key_id]. */
+  optional uint32 signed_pre_key_id                     = 5;
+  /* From [libsignal_protocol::PreKeySignalMessage::base_key]. */
+  optional bytes signed_pre_key_public                  = 6;
+  /* From [super::super::SignedPreKey::signature] unmodified. */
+  optional bytes signed_pre_key_signature               = 7;
+  /* From [libsignal_protocol::PreKeySignalMessage::identity_key]. */
+  optional bytes identity_key                           = 8;
 }
 
+/* Encapsulates all the information needed to send a sealed-sender message after processing a [PreKeyBundle]. *See [super::super::SealedSenderMessage].*
+ */
 message SealedSenderMessage {
+  /* From [super::super::SealedSenderMessage::trust_root] unmodified. */
   optional bytes trust_root_public_key           = 1;
+  /* From [super::super::SealedSenderMessage::encrypted_message] unmodified. */
   optional bytes encrypted_sealed_sender_message = 2;
 }

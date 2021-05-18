@@ -7,11 +7,16 @@ package grouplink.proto.message;
 
 import "session.proto";
 
+/* All the types of communications that can be sent between identities in the [grouplink protocol](crate).
+ *
+ * Intentionally selected as a strict subset of the types of messages supported by the underlying [libsignal_protocol] crate.
+ */
 message Message {
+  /* The parent [super::Message] struct contains any of an enumeration of other messages. */
   oneof type {
-    // Exposes the sender's address.
+    /* Exposes the sender's address. */
     grouplink.proto.session.PreKeyBundle bundle                       = 1;
-    // Does *not* expose the sender's address.
+    /* Does *not* expose the sender's address. */
     grouplink.proto.session.SealedSenderMessage sealed_sender_message = 2;
   }
 }

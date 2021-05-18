@@ -8,7 +8,6 @@
 /// [prost] structs for serializing types of identities so they can be revived in a persistent
 /// [store](crate::store).
 pub mod proto {
-  #![allow(missing_docs)]
   include!(concat!(env!("OUT_DIR"), "/grouplink.proto.identity.rs"));
 }
 
@@ -28,7 +27,7 @@ use uuid::Uuid;
 use libsignal_protocol::{IdentityKeyStore, ProtocolAddress};
 
 use std::{
-  convert::{AsRef, From, TryFrom},
+  convert::{From, TryFrom},
   default, fmt,
   time::{Duration, SystemTime, SystemTimeError},
 };
@@ -74,60 +73,6 @@ impl Spontaneous<()> for CryptographicIdentity {
     let inner = signal::IdentityKeyPair::generate(csprng);
     let seed: signal::SessionSeed = csprng.gen::<u32>().into();
     Self { inner, seed }
-  }
-}
-
-impl From<CryptographicIdentity> for proto::CryptographicIdentity {
-  fn from(value: CryptographicIdentity) -> proto::CryptographicIdentity {
-    let CryptographicIdentity { inner, seed } = value;
-    proto::CryptographicIdentity {
-      signal_key_pair: Some(inner.serialize().into_vec()),
-      seed: Some(seed.into()),
-    }
-  }
-}
-
-impl TryFrom<proto::CryptographicIdentity> for CryptographicIdentity {
-  type Error = Error;
-  fn try_from(value: proto::CryptographicIdentity) -> Result<Self, Error> {
-    let proto::CryptographicIdentity {
-      signal_key_pair,
-      seed,
-    } = value.clone();
-    let encoded_key_pair: Vec<u8> = signal_key_pair.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `signal_key_pair` field!",),
-        format!("{:?}", value),
-      ))
-    })?;
-    let decoded_key_pair = signal::IdentityKeyPair::try_from(encoded_key_pair.as_ref())?;
-    let seed: signal::SessionSeed = seed
-      .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-          format!("failed to find `seed` field!",),
-          format!("{:?}", value),
-        ))
-      })?
-      .into();
-    Ok(Self {
-      inner: decoded_key_pair,
-      seed,
-    })
-  }
-}
-
-impl TryFrom<&[u8]> for CryptographicIdentity {
-  type Error = Error;
-  fn try_from(value: &[u8]) -> Result<Self, Error> {
-    let proto_message = proto::CryptographicIdentity::decode(value)?;
-    Self::try_from(proto_message)
-  }
-}
-
-impl From<CryptographicIdentity> for Box<[u8]> {
-  fn from(value: CryptographicIdentity) -> Box<[u8]> {
-    let proto_message: proto::CryptographicIdentity = value.into();
-    encode_proto_message(proto_message)
   }
 }
 
@@ -286,72 +231,16 @@ impl Spontaneous<()> for Identity {
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
 /// use grouplink::identity::*;
-/// use std::convert::TryFrom;
 ///
 /// // Create a new identity.
 /// let id = generate_identity();
 /// // The identity is unique.
 /// assert!(id != generate_identity());
-///
-/// // Serialize the identity.
-/// let buf: Box<[u8]> = id.clone().into();
-/// // Deserialize the identity.
-/// let resurrected = Identity::try_from(buf.as_ref())?;
-///
-/// assert!(id == resurrected);
 /// # Ok(())
 /// # }
 ///```
 pub fn generate_identity() -> Identity {
   Identity::generate((), &mut rand::thread_rng())
-}
-
-impl From<Identity> for proto::Identity {
-  fn from(value: Identity) -> Self {
-    let Identity { crypto, external } = value;
-    proto::Identity {
-      key_pair: Some(crypto.into()),
-      address: Some(proto::Address::from(external)),
-    }
-  }
-}
-
-impl TryFrom<proto::Identity> for Identity {
-  type Error = Error;
-  fn try_from(proto_message: proto::Identity) -> Result<Self, Error> {
-    let proto::Identity { key_pair, address } = proto_message.clone();
-    let key_pair: proto::CryptographicIdentity = key_pair.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `key_pair` field!"),
-        format!("{:?}", proto_message),
-      ))
-    })?;
-    let address: proto::Address = address.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `signal_address` field!"),
-        format!("{:?}", proto_message),
-      ))
-    })?;
-    Ok(Self {
-      crypto: CryptographicIdentity::try_from(key_pair)?,
-      external: ExternalIdentity::try_from(address)?,
-    })
-  }
-}
-
-impl TryFrom<&[u8]> for Identity {
-  type Error = Error;
-  fn try_from(value: &[u8]) -> Result<Self, Error> {
-    let proto_message = proto::Identity::decode(value)?;
-    Self::try_from(proto_message)
-  }
-}
-
-impl From<Identity> for Box<[u8]> {
-  fn from(value: Identity) -> Box<[u8]> {
-    let proto_message: proto::Identity = value.into();
-    encode_proto_message(proto_message)
-  }
 }
 
 impl fmt::Display for Identity {
@@ -628,26 +517,10 @@ pub mod test {
 
   proptest! {
     #[test]
-    fn test_serde_crypto(crypto in any::<CryptographicIdentity>()) {
-      let buf: Box<[u8]> = crypto.clone().into();
-      let resurrected = CryptographicIdentity::try_from(buf.as_ref()).unwrap();
-      prop_assert_eq!(crypto, resurrected);
-    }
-
-    #[test]
     fn test_serde_external(external in any::<ExternalIdentity>()) {
       let buf: Box<[u8]> = external.clone().into();
       let resurrected = ExternalIdentity::try_from(buf.as_ref()).unwrap();
       prop_assert_eq!(external, resurrected);
-    }
-
-    #[test]
-    fn test_serde_identity(crypto in any::<CryptographicIdentity>(),
-                           external in any::<ExternalIdentity>()) {
-      let id = Identity { crypto, external };
-      let buf: Box<[u8]> = id.clone().into();
-      let resurrected = Identity::try_from(buf.as_ref()).unwrap();
-      prop_assert_eq!(id, resurrected);
     }
   }
 }

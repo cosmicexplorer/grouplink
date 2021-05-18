@@ -1,6 +1,10 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+//! Wrap all stateful [libsignal_protocol] operations in immutable stateless objects!
+
+/// [prost] structs for serializing session information. This is directly used in serialized
+/// messages between identities.
 pub mod proto {
   /* Ensure the generated identity.proto outputs are available under [super::identity] within the
    * sub-module also named "proto". */
@@ -8,6 +12,7 @@ pub mod proto {
   mod proto {
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.session.rs"));
   }
+  #[doc(inline)]
   pub use proto::*;
 }
 
@@ -22,12 +27,20 @@ use libsignal_protocol as signal;
 use prost::Message;
 use rand::{self, CryptoRng, Rng};
 
+#[cfg(doc)]
+use libsignal_protocol::{PreKeyStore, SignedPreKeyStore};
+
 use std::convert::{TryFrom, TryInto};
 use std::time::SystemTime;
 
+/// Specify the parameters to create a new [SignedPreKey].
 #[derive(Debug, Clone, Copy)]
 pub struct SignedPreKeyRequest {
+  /// Specifies this particular signed pre-key in the local [SignedPreKeyStore]. Randomly generated
+  /// upon creation of a [Self].
   pub id: signal::SignedPreKeyId,
+  /// The cryptographic public/private key pair represented by the signed pre-key to
+  /// create. Randomly generated upon creation of a [Self].
   pub pair: signal::IdentityKeyPair,
 }
 
@@ -39,10 +52,20 @@ impl Spontaneous<()> for SignedPreKeyRequest {
   }
 }
 
+/// Represents a signed pre-key as per the [X3DH] key agreement protocol.
+///
+/// TODO: this object should be downloaded from a keyserver for the identity instead of regenerated
+/// on the spot!
+///
+/// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
 #[derive(Debug, Clone)]
 pub struct SignedPreKey {
+  /// From [SignedPreKeyRequest::id].
   pub id: signal::SignedPreKeyId,
+  /// From [SignedPreKeyRequest::pair].
   pub pair: signal::IdentityKeyPair,
+  /// Opaque signature which is checked every time a [PreKeyBundle] is created using this signed
+  /// pre-key.
   pub signature: Box<[u8]>,
 }
 
@@ -54,6 +77,9 @@ fn get_timestamp() -> u64 {
 }
 
 impl SignedPreKey {
+  /// Mutate `id_store` and `signed_prekey_store` to instantiate a [signal::SignedPreKeyRecord].
+  ///
+  /// Used in [generate_signed_pre_key].
   pub async fn intern<
     Record,
     ID: signal::IdentityKeyStore + Persistent<Record>,
@@ -91,6 +117,38 @@ impl SignedPreKey {
   }
 }
 
+/// Create a new signed pre-key from random bits as per the [X3DH] key agreement protocol.
+///
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::{*, store::file_persistence::*};
+/// use std::path::PathBuf;
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # use futures::executor::block_on;
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a new signed pre-key from random bits.
+/// # #[allow(unused_variables)]
+/// let signed_pre_key = generate_signed_pre_key(&mut alice_store).await?;
+/// # Ok(())
+/// # })
+/// # }
+///```
+/// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
 pub async fn generate_signed_pre_key<
   Record,
   S: signal::SessionStore + Persistent<Record>,
@@ -111,9 +169,14 @@ pub async fn generate_signed_pre_key<
   .await
 }
 
+/// Specify the parameters to create a new [OneTimePreKey].
 #[derive(Debug, Clone, Copy)]
 pub struct OneTimePreKeyRequest {
+  /// Specifies this particular one-time pre-key in the local [PreKeyStore]. Randomly generated
+  /// upon creation of a [Self].
   pub id: signal::PreKeyId,
+  /// The cryptographic public/private key pair represented by the one-time pre-key to
+  /// create. Randomly generated upon creation of a [Self].
   pub pair: signal::IdentityKeyPair,
 }
 
@@ -125,13 +188,23 @@ impl Spontaneous<()> for OneTimePreKeyRequest {
   }
 }
 
+/// Represents a one-time pre-key as per the [X3DH] key agreement protocol.
+///
+/// As the name implies, one is created and consumed for each [PreKeyBundle].
+///
+/// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
 #[derive(Debug, Clone, Copy)]
 pub struct OneTimePreKey {
+  /// From [OneTimePreKeyRequest::id].
   pub id: signal::PreKeyId,
+  /// From [OneTimePreKeyRequest::pair].
   pub pair: signal::IdentityKeyPair,
 }
 
 impl OneTimePreKey {
+  /// Mutate `store` to instantiate a [signal::PreKeyRecord].
+  ///
+  /// Used in [generate_one_time_pre_key].
   pub async fn intern<Record, PK: signal::PreKeyStore + Persistent<Record>>(
     params: OneTimePreKeyRequest,
     store: &mut PK,
@@ -144,6 +217,38 @@ impl OneTimePreKey {
   }
 }
 
+/// Create a new one-time pre-key from random bits as per the [X3DH] key agreement protocol.
+///
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::{*, store::file_persistence::*};
+/// use std::path::PathBuf;
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # use futures::executor::block_on;
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a new one-time pre-key from random bits.
+/// # #[allow(unused_variables)]
+/// let one_time_pre_key = generate_one_time_pre_key(&mut alice_store).await?;
+/// # Ok(())
+/// # })
+/// # }
+///```
+/// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
 pub async fn generate_one_time_pre_key<
   Record,
   S: signal::SessionStore + Persistent<Record>,
@@ -158,15 +263,28 @@ pub async fn generate_one_time_pre_key<
   OneTimePreKey::intern(req, &mut store.pre_key_store).await
 }
 
+/// Specify the parameters to create a new [PreKeyBundle].
 #[derive(Debug, Clone)]
 pub struct PreKeyBundleRequest {
+  /// Specifies the external-facing identity whom the [PreKeyBundle] lets you start a new message
+  /// chain with.
   pub destination: ExternalIdentity,
+  /// Produced by [generate_signed_pre_key].
+  ///
+  /// TODO: likely downloaded from some sort of keyserver???
   pub signed: SignedPreKey,
+  /// Produced by [generate_one_time_pre_key].
   pub one_time: OneTimePreKey,
+  /// The private cryptographic information needed to sign this pre-key bundle to verify it came
+  /// from this identity.
   pub identity: CryptographicIdentity,
 }
 
 impl PreKeyBundleRequest {
+  /// Read from `store` to create a [PreKeyBundleRequest] instance representing the
+  /// store's identity.
+  ///
+  /// Used in [generate_pre_key_bundle].
   pub async fn create<Record, ID: signal::IdentityKeyStore + Persistent<Record>>(
     destination: ExternalIdentity,
     signed: SignedPreKey,
@@ -185,12 +303,21 @@ impl PreKeyBundleRequest {
   }
 }
 
+/// Represents a pre-key bundle as per the [X3DH] key agreement protocol.
+///
+/// This object is generated from a [SignedPreKey] and a [OneTimePreKey].
+///
+/// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
 #[derive(Debug, Clone)]
 pub struct PreKeyBundle {
+  /// From [PreKeyBundleRequest::destination].
   pub destination: ExternalIdentity,
+  /// Underlying concept exposed by [libsignal_protocol].
   pub inner: signal::PreKeyBundle,
 }
 
+/// This is laborious and cannot be `derive`d because [signal::PreKeyBundle] does not implement
+/// [PartialEq] itself.
 impl PartialEq for PreKeyBundle {
   fn eq(&self, other: &Self) -> bool {
     (self.destination == other.destination)
@@ -208,6 +335,7 @@ impl PartialEq for PreKeyBundle {
 impl Eq for PreKeyBundle {}
 
 impl PreKeyBundle {
+  /// Generates a new pre-key bundle from the specifications of `request`.
   pub fn new(request: PreKeyBundleRequest) -> Result<Self, Error> {
     let PreKeyBundleRequest {
       destination,
@@ -227,6 +355,12 @@ impl PreKeyBundle {
     Ok(Self { destination, inner })
   }
 
+  /// Mutates `session_store` and `id_store` to register the current bundle's contents to the
+  /// underlying [libsignal_protocol] stores.
+  ///
+  /// Consumes the current bundle instance. When this bundle is consumed, a new message chain is
+  /// created so that [encrypt_followup_message] can now be called instead of
+  /// [encrypt_initial_message].
   pub async fn process<
     Record,
     S: signal::SessionStore + Persistent<Record>,
@@ -253,6 +387,49 @@ impl PreKeyBundle {
   }
 }
 
+/// Create a new pre-key bundle from a signed pre-key and a one-time pre-key as per the [X3DH] key
+/// agreement protocol.
+///
+/// The prerequisite keys can be generated with [generate_signed_pre_key] and
+/// [generate_one_time_pre_key]:
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::{*, store::file_persistence::*};
+/// use std::path::PathBuf;
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # use futures::executor::block_on;
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a new signed pre-key from random bits.
+/// let signed_pre_key = generate_signed_pre_key(&mut alice_store).await?;
+/// // Create a new one-time pre-key from random bits.
+/// let one_time_pre_key = generate_one_time_pre_key(&mut alice_store).await?;
+///
+/// // Create a new pre-key bundle from the given keys.
+/// # #[allow(unused_variables)]
+/// let pre_key_bundle = generate_pre_key_bundle(alice.external.clone(),
+///                                              signed_pre_key,
+///                                              one_time_pre_key,
+///                                              &mut alice_store).await?;
+/// # Ok(())
+/// # })
+/// # }
+///```
+/// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
 pub async fn generate_pre_key_bundle<
   Record,
   S: signal::SessionStore + Persistent<Record>,
@@ -277,7 +454,6 @@ impl TryFrom<PreKeyBundle> for proto::PreKeyBundle {
     Ok(proto::PreKeyBundle {
       destination: Some(destination.into()),
       registration_id: Some(inner.registration_id()?),
-      device_id: Some(inner.device_id()?),
       pre_key_id: inner.pre_key_id()?.map(|id| id.into()),
       pre_key_public: inner
         .pre_key_public()?
@@ -304,7 +480,6 @@ impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
     let proto::PreKeyBundle {
       destination,
       registration_id,
-      device_id,
       pre_key_id,
       pre_key_public,
       signed_pre_key_id,
@@ -323,12 +498,6 @@ impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
     let registration_id: u32 = registration_id.ok_or_else(|| {
       Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
         format!("failed to find `registration_id` field!"),
-        format!("{:?}", value),
-      ))
-    })?;
-    let device_id: u32 = device_id.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `device_id` field!"),
         format!("{:?}", value),
       ))
     })?;
@@ -379,10 +548,10 @@ impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
     })?[..]
       .try_into()?;
     Ok(Self {
-      destination,
+      destination: destination.clone(),
       inner: signal::PreKeyBundle::new(
         registration_id,
-        device_id,
+        destination.device_id.into(),
         pre_key,
         signed_pre_key_id,
         signed_pre_key_public,
@@ -401,26 +570,51 @@ impl TryFrom<&[u8]> for PreKeyBundle {
   }
 }
 
+/// Specify the parameters to create a new [SealedSenderMessage] to kick off a **new**
+/// message chain.
+///
+/// This is currently implemented by handing off to
+/// a [SealedSenderFollowupMessageRequest] instance.
 #[derive(Debug, Clone)]
 pub struct SealedSenderMessageRequest<'a> {
+  /// Bundle for the recipient to then [PreKeyBundle::process] to create a new message chain from
+  /// a completed [X3DH] key agreement. Contains the [PreKeyBundle::destination] to send to.
+  ///
+  /// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
   pub bundle: PreKeyBundle,
+  /// Newly generated certificate with cryptographic information to encrypt this message's sender.
   pub sender_cert: SenderCert,
-  pub ptext: &'a [u8],
+  /// The message to encrypt! This message will be the first in the message chain.
+  pub plaintext: &'a [u8],
 }
 
+/// Specify the parameters to create a new [SealedSenderMessage] to continue an **existing**
+/// message chain.
 #[derive(Debug, Clone)]
 pub struct SealedSenderFollowupMessageRequest<'a> {
+  /// The external-facing identity to send to. This is *not* encrypted.
   pub target: ExternalIdentity,
+  /// Newly generated certificate with cryptographic information to encrypt this message's sender.
   pub sender_cert: SenderCert,
-  pub ptext: &'a [u8],
+  /// The message to encrypt! This message will iterate a [KDF] corresponding to this message chain.
+  ///
+  /// [KDF]: https://signal.org/docs/specifications/doubleratchet/#kdf-chains
+  pub plaintext: &'a [u8],
 }
 
+/// Send an encrypted message without revealing the identity of its author except to the
+/// intended recipient! *See [Sealed Sender messages in Signal].*
+///
+/// [Sealed Sender messages in Signal]: https://signal.org/blog/sealed-sender/
 #[derive(Debug, Clone)]
 pub struct SealedSenderMessage {
+  /// From [SenderCert::trust_root].
   pub trust_root: signal::PublicKey,
+  /// The opaque message ciphertext.
   pub encrypted_message: Box<[u8]>,
 }
 
+/// This cannot be `derive`d because [Box::<[u8]>] does not implement [PartialEq] itself.
 impl PartialEq for SealedSenderMessage {
   fn eq(&self, other: &Self) -> bool {
     (self.trust_root == other.trust_root)
@@ -431,6 +625,10 @@ impl PartialEq for SealedSenderMessage {
 impl Eq for SealedSenderMessage {}
 
 impl SealedSenderMessage {
+  /// Mutate `session_store` and `id_store` to register a sealed-sender message for a **new**
+  /// message chain with the underlying [libsignal_protocol] crate.
+  ///
+  /// Used in [encrypt_initial_message].
   pub async fn intern<
     'a,
     Record,
@@ -446,7 +644,7 @@ impl SealedSenderMessage {
     let SealedSenderMessageRequest {
       bundle,
       sender_cert,
-      ptext,
+      plaintext,
     } = request;
 
     let target = bundle.destination.clone();
@@ -456,7 +654,7 @@ impl SealedSenderMessage {
       SealedSenderFollowupMessageRequest {
         target,
         sender_cert,
-        ptext,
+        plaintext,
       },
       session_store,
       id_store,
@@ -465,6 +663,10 @@ impl SealedSenderMessage {
     .await
   }
 
+  /// Mutate `session_store` and `id_store` to register a sealed-sender message for an **existing**
+  /// message chain with the underlying [libsignal_protocol] crate.
+  ///
+  /// Used in [encrypt_followup_message] and [Self::intern].
   pub async fn intern_followup<
     'a,
     Record,
@@ -483,13 +685,13 @@ impl SealedSenderMessage {
         inner: sender_cert,
         trust_root,
       },
-      ptext,
+      plaintext,
     } = request;
 
     let encrypted_message = signal::sealed_sender_encrypt(
       &destination.into(),
       &sender_cert,
-      ptext,
+      plaintext,
       session_store,
       id_store,
       None,
@@ -507,6 +709,69 @@ impl SealedSenderMessage {
   }
 }
 
+/// Encrypt a [SealedSenderMessage] by invoking [PreKeyBundle::process]. This will kick off
+/// a **new** message chain.
+///
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::{*, store::file_persistence::*};
+/// # use futures::executor::block_on;
+/// use std::{convert::{TryFrom, TryInto}, path::PathBuf};
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+/// let alice_client = generate_sealed_sender_identity(alice.external.clone());
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a destination identity.
+/// let bob = generate_identity();
+/// let mut bob_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("bob"), // Subdirectory of cwd.
+///     id: bob.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
+/// // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
+/// let bob_signed_pre_key = generate_signed_pre_key(&mut bob_store).await?;
+/// let bob_one_time_pre_key = generate_one_time_pre_key(&mut bob_store).await?;
+///
+/// // Generate the pre-key bundle.
+/// let bob_pre_key_bundle = generate_pre_key_bundle(bob.external.clone(),
+///                                                  bob_signed_pre_key,
+///                                                  bob_one_time_pre_key,
+///                                                  &bob_store).await?;
+/// let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
+///
+/// // Encrypt a message.
+/// # #[allow(unused_variables)]
+/// let initial_message = encrypt_initial_message(
+///   SealedSenderMessageRequest {
+///     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+///     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
+///                                       SenderCertTTL::default())?,
+///     plaintext: "asdf".as_bytes(),
+///   },
+///   &mut alice_store,
+/// ).await?;
+///
+/// # Ok(())
+/// # }) // async
+/// # }
+///```
 pub async fn encrypt_initial_message<
   Record,
   S: signal::SessionStore + Persistent<Record>,
@@ -527,6 +792,93 @@ pub async fn encrypt_initial_message<
   .await
 }
 
+/// Encrypt a [SealedSenderMessage]. This will use an **existing** message chain.
+///
+/// An *existing* message chain can be initialized by calling [encrypt_initial_message] and then
+/// [decrypt_message]:
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::{*, store::file_persistence::*};
+/// # use futures::executor::block_on;
+/// use std::path::PathBuf;
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+/// let alice_client = generate_sealed_sender_identity(alice.external.clone());
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a destination identity.
+/// let bob = generate_identity();
+/// let bob_client = generate_sealed_sender_identity(bob.external.clone());
+/// let mut bob_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("bob"), // Subdirectory of cwd.
+///     id: bob.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
+/// // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
+/// let bob_signed_pre_key = generate_signed_pre_key(&mut bob_store).await?;
+/// let bob_one_time_pre_key = generate_one_time_pre_key(&mut bob_store).await?;
+///
+/// // Generate the pre-key bundle.
+/// let bob_pre_key_bundle = generate_pre_key_bundle(bob.external.clone(),
+///                                                  bob_signed_pre_key,
+///                                                  bob_one_time_pre_key,
+///                                                  &bob_store).await?;
+///
+/// // Encrypt a message.
+/// let initial_message = encrypt_initial_message(
+///   SealedSenderMessageRequest {
+///     bundle: bob_pre_key_bundle,
+///     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
+///                                       SenderCertTTL::default())?,
+///     plaintext: "asdf".as_bytes(),
+///   },
+///   &mut alice_store,
+/// ).await?;
+///
+/// // Decrypt the sealed-sender message.
+/// let message_result = decrypt_message(
+///   SealedSenderDecryptionRequest {
+///     inner: initial_message,
+///     local_identity: bob_client.clone(),
+///   },
+///   &mut bob_store,
+/// ).await?;
+///
+/// assert!(message_result.sender == alice_client.stripped_e164());
+/// assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
+///
+/// // Now send a message back to Alice.
+/// # #[allow(unused_variables)]
+/// let bob_follow_up = encrypt_followup_message(
+///   SealedSenderFollowupMessageRequest {
+///     target: alice.external.clone(),
+///     sender_cert: generate_sender_cert(bob_client.stripped_e164(), bob.crypto,
+///                                       SenderCertTTL::default())?,
+///     plaintext: "oh ok".as_bytes(),
+///   },
+///   &mut bob_store,
+/// ).await?;
+///
+/// # Ok(())
+/// # }) // async
+/// # }
+///```
 pub async fn encrypt_followup_message<
   Record,
   S: signal::SessionStore + Persistent<Record>,
@@ -607,19 +959,30 @@ impl TryFrom<&[u8]> for SealedSenderMessage {
   }
 }
 
+/// Specify the parameters to decrypt a [SealedSenderMessage].
 #[derive(Debug, Clone)]
 pub struct SealedSenderDecryptionRequest {
+  /// The message to decrypt.
   pub inner: SealedSenderMessage,
+  /// The augmented external-facing identity which disambiguates this client from others
+  /// representing the same identity. *See [SealedSenderIdentity].*
   pub local_identity: SealedSenderIdentity,
 }
 
+/// The result of decrypting a [SealedSenderMessage].
 #[derive(Debug, Clone)]
 pub struct SealedSenderMessageResult {
+  /// The augmented external-facing identity who sent the message, encrypted in the message itself.
   pub sender: SealedSenderIdentity,
+  /// The decrypted original input provided to [SealedSenderFollowupMessageRequest::plaintext].
   pub plaintext: Box<[u8]>,
 }
 
 impl SealedSenderMessageResult {
+  /// Mutate `id_store`, `session_store`, `pre_key_store`, and `signed_pre_key_store` to to decrypt
+  /// `message`.
+  ///
+  /// Used in [decrypt_message].
   pub async fn intern<
     Record,
     ID: signal::IdentityKeyStore + Persistent<Record>,
@@ -687,6 +1050,80 @@ impl SealedSenderMessageResult {
   }
 }
 
+/// Decrypt a [SealedSenderMessage]. This will use an **existing** message chain.
+///
+/// An *existing* message chain can be initialized by calling [encrypt_initial_message] or
+/// [encrypt_followup_message]:
+///```
+/// # fn main() -> Result<(), grouplink::error::Error> {
+/// use grouplink::{*, store::file_persistence::*};
+/// # use futures::executor::block_on;
+/// use std::path::PathBuf;
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+/// let alice_client = generate_sealed_sender_identity(alice.external.clone());
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a destination identity.
+/// let bob = generate_identity();
+/// let bob_client = generate_sealed_sender_identity(bob.external.clone());
+/// let mut bob_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("bob"), // Subdirectory of cwd.
+///     id: bob.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
+/// // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
+/// let bob_signed_pre_key = generate_signed_pre_key(&mut bob_store).await?;
+/// let bob_one_time_pre_key = generate_one_time_pre_key(&mut bob_store).await?;
+///
+/// // Generate the pre-key bundle.
+/// let bob_pre_key_bundle = generate_pre_key_bundle(bob.external.clone(),
+///                                                  bob_signed_pre_key,
+///                                                  bob_one_time_pre_key,
+///                                                  &bob_store).await?;
+///
+/// // Encrypt a message.
+/// let initial_message = encrypt_initial_message(
+///   SealedSenderMessageRequest {
+///     bundle: bob_pre_key_bundle,
+///     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
+///                                       SenderCertTTL::default())?,
+///     plaintext: "asdf".as_bytes(),
+///   },
+///   &mut alice_store,
+/// ).await?;
+///
+/// // Decrypt the sealed-sender message.
+/// let message_result = decrypt_message(
+///   SealedSenderDecryptionRequest {
+///     inner: initial_message,
+///     local_identity: bob_client.clone(),
+///   },
+///   &mut bob_store,
+/// ).await?;
+///
+/// assert!(message_result.sender == alice_client.stripped_e164());
+/// assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
+/// # Ok(())
+/// # }) // async
+/// # }
+///```
 pub async fn decrypt_message<
   Record,
   S: signal::SessionStore + Persistent<Record>,
