@@ -1,8 +1,6 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! ???
-
 pub mod proto {
   include!(concat!(env!("OUT_DIR"), "/grouplink.proto.identity.rs"));
 }
@@ -227,7 +225,6 @@ impl Spontaneous<()> for ExternalIdentity {
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
 /// use grouplink::identity::{Identity, ExternalIdentity, CryptographicIdentity, Spontaneous};
-/// use rand;
 /// use std::convert::TryFrom;
 ///
 /// // Create a new identity.

@@ -1,8 +1,6 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! ???
-
 pub mod proto {
   /* Ensure the generated identity.proto outputs are available under [super::identity] within the
    * sub-module also named "proto". */

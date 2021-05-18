@@ -1,15 +1,15 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! ???
-
+/// Generated protobuf struct definitions used for persisting a [Store] to disk or elsewhere.
 pub mod proto {
-  /* Ensure the generated identity.proto outputs are available under [super::identity] within the
-   * sub-module also named "proto". */
+  /* Ensure the generated identity.proto outputs are available under `super::identity` within the
+   * private sub-module named `proto`. */
   pub use crate::identity::proto as identity;
   mod proto {
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.store.rs"));
   }
+  #[doc(inline)]
   pub use proto::*;
 }
 
@@ -30,7 +30,6 @@ pub trait Persistent<Record> {
     Self: Sized;
 }
 
-/// ???
 #[derive(Debug, Clone)]
 pub struct Store<
   Record,

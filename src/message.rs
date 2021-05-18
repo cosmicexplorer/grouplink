@@ -1,6 +1,10 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+//! Define the atomic types of communications between individual identities in the
+//! [grouplink protocol](crate).
+
+/// [prost] structs for serializing a [Message].
 pub mod proto {
   /* Ensure the generated identity.proto outputs are available under [super::identity] within the
    * sub-module also named "proto". */
@@ -9,6 +13,7 @@ pub mod proto {
   mod proto {
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.message.rs"));
   }
+  #[doc(inline)]
   pub use proto::*;
 }
 
@@ -22,27 +27,41 @@ use thiserror::Error;
 
 use std::convert::{TryFrom, TryInto};
 
+/// Types of errors that can occur while processing an incoming [Message].
 #[derive(Debug, Error, Display)]
 pub enum MessageError {
-  /// message {0:?} must be a bundle
+  /// message {0:?} was expected to be a [Message::Bundle]
   WasNotBundle(Message),
-  /// message {0:?} must be a sealed-sender message
+  /// message {0:?} was expected to be a [Message::Sealed]
   WasNotSealed(Message),
 }
 
+/// Types of incoming messages which a [grouplink](crate) client needs to be able to handle.
+///
+/// Note that these are a subset of message types available in [libsignal_protocol] which can be
+/// effectively represented inline with the message contents, in a `gpg`-like way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
+  /// All of the information needed to perform an [X3DH] asynchronous key agreement.
+  ///
+  /// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
   Bundle(PreKeyBundle),
+  /// A message from another user, which may start a new [Double Ratchet] chain or re-use an
+  /// existing conversation.
+  ///
+  /// [Double Ratchet]: https://signal.org/docs/specifications/doubleratchet/#kdf-chains
   Sealed(SealedSenderMessage),
 }
 
 impl Message {
+  #[doc(hidden)]
   pub fn assert_bundle(self) -> Result<PreKeyBundle, MessageError> {
     match self.clone() {
       Self::Bundle(x) => Ok(x),
       _ => Err(MessageError::WasNotBundle(self)),
     }
   }
+  #[doc(hidden)]
   pub fn assert_sealed(self) -> Result<SealedSenderMessage, MessageError> {
     match self.clone() {
       Self::Sealed(x) => Ok(x),

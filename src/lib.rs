@@ -103,10 +103,14 @@
 //! # }
 //!```
 
+/* Warn for missing docs in general, and hard require crate-level docs. */
 #![warn(missing_docs)]
 #![deny(missing_crate_level_docs)]
 /* #![deny(warnings)] */
+/* Taken from the `libsignal_protocol` crate. */
 #![deny(unsafe_code)]
+/* Make all doctests fail if they produce any warnings. */
+#![doc(test(attr(deny(warnings))))]
 /* Enable all clippy lints except for many of the pedantic ones. It's a shame this needs to be
  * copied and pasted across crates, but there doesn't appear to be a way to include inner attributes
  * from a common source. */
