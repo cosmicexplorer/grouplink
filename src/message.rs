@@ -1,105 +1,6 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! ???
-//!
-//!```
-//! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::{identity::*, session::*, message::*, store::file_persistence::*};
-//! # use futures::executor::block_on;
-//! use std::{convert::{TryFrom, TryInto}, path::PathBuf};
-//! # use std::env::set_current_dir;
-//! # use tempdir::TempDir;
-//! # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
-//! # set_current_dir(tmp_dir.path()).unwrap();
-//! # block_on(async {
-//!
-//! // Create a new identity.
-//! let alice = generate_identity();
-//! let alice_client = generate_sealed_sender_identity(alice.external.clone());
-//!
-//! // Create a mutable store.
-//! let mut alice_store =
-//!   initialize_file_backed_store(DirectoryStoreRequest {
-//!     path: PathBuf::from("alice"), // Subdirectory of cwd.
-//!     id: alice.crypto,
-//!     behavior: ExtractionBehavior::OverwriteWithDefault,
-//!   }).await?;
-//!
-//! // Create a destination identity.
-//! let bob = generate_identity();
-//! let bob_client = generate_sealed_sender_identity(bob.external.clone());
-//! let mut bob_store =
-//!   initialize_file_backed_store(DirectoryStoreRequest {
-//!     path: PathBuf::from("bob"), // Subdirectory of cwd.
-//!     id: bob.crypto,
-//!     behavior: ExtractionBehavior::OverwriteWithDefault,
-//!   }).await?;
-//!
-//! // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
-//! // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
-//! let bob_signed_pre_key = generate_signed_pre_key(&mut bob_store).await?;
-//! let bob_one_time_pre_key = generate_one_time_pre_key(&mut bob_store).await?;
-//!
-//! // Generate the pre-key bundle.
-//! let bob_pre_key_bundle = generate_pre_key_bundle(bob.external.clone(),
-//!                                                  bob_signed_pre_key,
-//!                                                  bob_one_time_pre_key,
-//!                                                  &bob_store).await?;
-//! let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
-//!
-//! // Encrypt a message.
-//! let initial_message = encrypt_initial_message(
-//!   SealedSenderMessageRequest {
-//!     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
-//!     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
-//!                                       SenderCertTTL::default())?,
-//!     ptext: "asdf".as_bytes(),
-//!   },
-//!   &mut alice_store,
-//! ).await?;
-//! let encoded_sealed_sender_message: Box<[u8]> = Message::Sealed(initial_message).try_into()?;
-//!
-//! // Decrypt the sealed-sender message.
-//! let message_result = decrypt_message(
-//!   SealedSenderDecryptionRequest {
-//!     inner: Message::try_from(encoded_sealed_sender_message.as_ref())?.assert_sealed()?,
-//!     local_identity: bob_client.clone(),
-//!   },
-//!   &mut bob_store,
-//! ).await?;
-//!
-//! assert!(message_result.sender == alice_client.stripped_e164());
-//! assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
-//!
-//! // Now send a message back to Alice.
-//! let bob_follow_up = encrypt_followup_message(
-//!   SealedSenderFollowupMessageRequest {
-//!     target: message_result.sender.inner,
-//!     sender_cert: generate_sender_cert(bob_client.stripped_e164(), bob.crypto,
-//!                                       SenderCertTTL::default())?,
-//!     ptext: "oh ok".as_bytes(),
-//!   },
-//!   &mut bob_store,
-//! ).await?;
-//! let encoded_follow_up_message: Box<[u8]> = Message::Sealed(bob_follow_up).try_into()?;
-//!
-//! let alice_incoming = decrypt_message(
-//!   SealedSenderDecryptionRequest {
-//!     inner: Message::try_from(encoded_follow_up_message.as_ref())?.assert_sealed()?,
-//!     local_identity: alice_client.clone(),
-//!   },
-//!   &mut alice_store,
-//! ).await?;
-//!
-//! assert!(alice_incoming.sender == bob_client.stripped_e164());
-//! assert!("oh ok" == std::str::from_utf8(alice_incoming.plaintext.as_ref()).unwrap());
-//!
-//! # Ok(())
-//! # }) // async
-//! # }
-//!```
-
 pub mod proto {
   /* Ensure the generated identity.proto outputs are available under [super::identity] within the
    * sub-module also named "proto". */
@@ -199,19 +100,8 @@ impl TryFrom<&[u8]> for Message {
   }
 }
 
-/* #[cfg(test)] */
-/* pub mod proptest_strategies { */
-/*   use super::*; */
-/*   use crate::store::{in_memory_store::*, proptest_strategies::*}; */
-
-/*   use proptest::prelude::*; */
-
-/*   use std::convert::{TryFrom, TryInto}; */
-/* } */
-
 #[cfg(test)]
 pub mod test {
-  /* use super::{proptest_strategies::*, *}; */
   use super::*;
   use crate::identity::Identity;
   use crate::session::{proptest_strategies::*, *};

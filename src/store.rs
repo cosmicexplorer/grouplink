@@ -18,10 +18,9 @@ use crate::error::Error;
 use async_trait::async_trait;
 use displaydoc::Display;
 use libsignal_protocol as signal;
-use parking_lot::RwLock;
 use thiserror::Error;
 
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 #[async_trait]
 pub trait Persistent<Record> {
@@ -46,11 +45,13 @@ pub struct Store<
   pub signed_pre_key_store: SPK,
   pub identity_store: ID,
   pub sender_key_store: Sender,
+  #[doc(hidden)]
   pub _record: PhantomData<Record>,
 }
 
+#[cfg(test)]
 pub type StoreWrapper<Record, S, PK, SPK, ID, Sender> =
-  Arc<RwLock<Store<Record, S, PK, SPK, ID, Sender>>>;
+  std::sync::Arc<parking_lot::RwLock<Store<Record, S, PK, SPK, ID, Sender>>>;
 
 #[derive(Debug, Display, Error)]
 pub enum StoreError {
@@ -774,6 +775,7 @@ pub mod file_persistence {
     FileSenderKeyStore,
   >;
 
+  #[cfg(test)]
   pub type FileStoreWrapper = super::StoreWrapper<
     PathBuf,
     FileSessionStore,
@@ -947,6 +949,7 @@ pub mod file_persistence {
   }
 }
 
+#[cfg(test)]
 pub mod in_memory_store {
   use super::*;
   use crate::identity::CryptographicIdentity;
