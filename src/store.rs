@@ -1043,8 +1043,11 @@ pub mod proptest_strategies {
   pub use super::in_memory_store::*;
   use crate::identity::CryptographicIdentity;
 
+  use tempdir::TempDir;
   use parking_lot::RwLock;
+  use proptest::prelude::*;
 
+  use std::path::PathBuf;
   use std::sync::Arc;
 
   pub fn generate_store(crypto: CryptographicIdentity) -> InMemStore {
@@ -1054,5 +1057,92 @@ pub mod proptest_strategies {
   pub fn generate_store_wrapper(crypto: CryptographicIdentity) -> InMemStoreWrapper {
     let store = generate_store(crypto);
     Arc::new(RwLock::new(store))
+  }
+
+  prop_compose! {
+    pub fn generate_temp_dir()(dirname in "tmp-dir-[a-z]{10}") -> TempDir {
+      TempDir::new(&dirname).unwrap()
+    }
+  }
+
+  prop_compose! {
+    pub fn generate_filename()(filename in "test-[0-9]+") -> PathBuf {
+      PathBuf::from(filename)
+    }
+  }
+}
+
+#[cfg(test)]
+pub mod test {
+  use super::{file_persistence::*, proptest_strategies::*, *};
+  use crate::error::{Error, ProtobufCodingFailure};
+
+  use futures::executor::block_on;
+  use proptest::prelude::*;
+
+  use std::fs;
+  use std::path::PathBuf;
+
+  #[derive(Debug, Eq, PartialEq)]
+  struct BytesPersister(pub PathBuf, pub Vec<u8>);
+
+  #[async_trait]
+  impl Persistent<PathBuf> for BytesPersister {
+    async fn persist(&mut self) -> Result<(), Error> {
+      fs::write(&self.0, &self.1)
+        .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
+    }
+    async fn extract(record: PathBuf) -> Result<Self, Error> {
+      let bytes = fs::read(&record)
+        .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?;
+      Ok(Self(record, bytes))
+    }
+  }
+
+  proptest! {
+    #[test]
+    fn test_extract_persistent(tmp_dir in generate_temp_dir(),
+                               filename in generate_filename(),
+                               content1 in "[a-z]{40}",
+                               content2 in "[a-z]{40}") {
+      assert_ne!(&content1, &content2);
+      let filename = tmp_dir.path().join(filename);
+      prop_assert!(
+        block_on(
+          ExtractionBehavior::ReadOrError.extract::<BytesPersister, _>(filename.clone(), || panic!())
+        ).is_err()
+      );
+      prop_assert!(
+        block_on(ExtractionBehavior::ReadOrDefault.extract::<BytesPersister, _>(
+          filename.clone(), || BytesPersister(filename.clone(), content1.as_bytes().to_vec()))
+        ).is_ok()
+      );
+      prop_assert_eq!(
+        block_on(
+          ExtractionBehavior::ReadOrError.extract::<BytesPersister, _>(filename.clone(), || panic!())
+        ).unwrap(),
+        BytesPersister(filename.clone(), content1.as_bytes().to_vec())
+      );
+      prop_assert_eq!(
+        block_on(
+          ExtractionBehavior::ReadOrDefault.extract::<BytesPersister, _>(
+            filename.clone(), || BytesPersister(filename.clone(), content2.as_bytes().to_vec()))
+        ).unwrap(),
+        BytesPersister(filename.clone(), content1.as_bytes().to_vec())
+      );
+      prop_assert_eq!(
+        block_on(
+          ExtractionBehavior::OverwriteWithDefault.extract::<BytesPersister, _>(
+            filename.clone(), || BytesPersister(filename.clone(), content2.as_bytes().to_vec()))
+        ).unwrap(),
+        BytesPersister(filename.clone(), content2.as_bytes().to_vec())
+      );
+      prop_assert_eq!(
+        block_on(
+          ExtractionBehavior::ReadOrError.extract::<BytesPersister, _>(filename.clone(), || panic!())
+        ).unwrap(),
+        BytesPersister(filename.clone(), content2.as_bytes().to_vec())
+      );
+    }
   }
 }
