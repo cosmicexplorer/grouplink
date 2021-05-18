@@ -1,6 +1,9 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+//! [Persistent] versions of underlying signal store implementations
+//! e.g. [libsignal_protocol::IdentityKeyStore].
+
 /// Generated protobuf struct definitions used for persisting a [Store] to disk or elsewhere.
 pub mod proto {
   /* Ensure the generated identity.proto outputs are available under `super::identity` within the
@@ -22,14 +25,29 @@ use thiserror::Error;
 
 use std::marker::PhantomData;
 
+#[cfg(doc)]
+use std::path::PathBuf;
+
+/// Define an object which can read itself from and write itself to some external persistent
+/// location of type `Record`.
+///
+/// This trait wraps implementations of mutable stores like [libsignal_protocol::IdentityKeyStore]
+/// in a way can be committed to disk in between complex operations to avoid the possibility of
+/// invalid states.
 #[async_trait]
 pub trait Persistent<Record> {
+  /// Write this object to some external location like a hard disk.
   async fn persist(&mut self) -> Result<(), Error>;
+  /// Read this type from the location `record`.
   async fn extract(record: Record) -> Result<Self, Error>
   where
     Self: Sized;
 }
 
+/// Defines a wrapper object for all types of mutable Signal stores.
+///
+/// Analogous to [libsignal_protocol::ProtocolStore] except that each store also implements
+/// [Persistent].
 #[derive(Debug, Clone)]
 pub struct Store<
   Record,
@@ -39,10 +57,15 @@ pub struct Store<
   ID: signal::IdentityKeyStore + Persistent<Record>,
   Sender: signal::SenderKeyStore + Persistent<Record>,
 > {
+  /// Implements [signal::SessionStore] and [Persistent].
   pub session_store: S,
+  /// Implements [signal::PreKeyStore] and [Persistent].
   pub pre_key_store: PK,
+  /// Implements [signal::SignedPreKeyStore] and [Persistent].
   pub signed_pre_key_store: SPK,
+  /// Implements [signal::IdentityKeyStore] and [Persistent].
   pub identity_store: ID,
+  /// Implements [signal::SenderKeyStore] and [Persistent].
   pub sender_key_store: Sender,
   #[doc(hidden)]
   pub _record: PhantomData<Record>,
@@ -52,6 +75,7 @@ pub struct Store<
 pub type StoreWrapper<Record, S, PK, SPK, ID, Sender> =
   std::sync::Arc<parking_lot::RwLock<Store<Record, S, PK, SPK, ID, Sender>>>;
 
+/// Types of errors which may occur when en/decoding a mutable store to a [Persistent] location.
 #[derive(Debug, Display, Error)]
 pub enum StoreError {
   /// the stored identity {0:?} did not match the expected key pair {1:?}
@@ -60,6 +84,11 @@ pub enum StoreError {
   NonMatchingStoreSeed(signal::SessionSeed, signal::SessionSeed),
 }
 
+/// Implement wrapper structs for in-memory signal stores e.g. [signal::IdentityKeyStore].
+///
+/// Due to orphan crate rules, we can't easily implement [Persistent] on
+/// [signal::InMemIdentityKeyStore] as it is defined outside the current crate, hence these
+/// boilerplate structs.
 pub mod conversions {
   use super::proto;
   use crate::error::{Error, ProtobufCodingFailure};
@@ -75,6 +104,7 @@ pub mod conversions {
   use std::convert::TryFrom;
 
   /* TODO: use property-based testing to validate these conversions (with TryFrom)! */
+  /// Implements [signal::IdentityKeyStore].
   #[derive(Clone, Debug)]
   pub struct IdStore(pub signal::InMemIdentityKeyStore);
 
@@ -178,6 +208,7 @@ pub mod conversions {
     }
   }
 
+  /// Implements [signal::PreKeyStore].
   #[derive(Debug, Clone, Default)]
   pub struct PKStore(pub signal::InMemPreKeyStore);
 
@@ -239,6 +270,7 @@ pub mod conversions {
     }
   }
 
+  /// Implements [signal::SignedPreKeyStore].
   #[derive(Debug, Clone, Default)]
   pub struct SPKStore(pub signal::InMemSignedPreKeyStore);
 
@@ -300,6 +332,7 @@ pub mod conversions {
     }
   }
 
+  /// Implements [signal::SessionStore].
   #[derive(Debug, Clone, Default)]
   pub struct SStore(pub signal::InMemSessionStore);
 
@@ -365,6 +398,7 @@ pub mod conversions {
     }
   }
 
+  /// Implements [signal::SenderKeyStore].
   #[derive(Clone, Debug, Default)]
   pub struct SKStore(pub signal::InMemSenderKeyStore);
 
@@ -447,6 +481,7 @@ pub mod conversions {
   }
 }
 
+/// Implementations of [Persistent] which persist to the local filesystem.
 pub mod file_persistence {
   use super::conversions::{IdStore, PKStore, SKStore, SPKStore, SStore};
   use super::{Persistent, Store, StoreError};
@@ -464,13 +499,17 @@ pub mod file_persistence {
   use std::marker::PhantomData;
   use std::path::PathBuf;
 
+  /// Implements [signal::IdentityKeyStore] and [`Persistent::<PathBuf>`](super::Persistent::<PathBuf>).
   #[derive(Debug, Clone)]
   pub struct FileIdStore {
+    /// Delegates to implement [signal::IdentityKeyStore].
     pub inner: IdStore,
+    /// Where this store will persist itself to.
     pub path: PathBuf,
   }
 
   impl FileIdStore {
+    #[allow(missing_docs)]
     pub fn new(inner: IdStore, path: PathBuf) -> Self {
       Self { inner, path }
     }
@@ -540,13 +579,17 @@ pub mod file_persistence {
     }
   }
 
+  /// Implements [signal::PreKeyStore] and [`Persistent::<PathBuf>`](super::Persistent::<PathBuf>).
   #[derive(Debug, Clone)]
   pub struct FilePreKeyStore {
+    /// Delegates to implement [signal::PreKeyStore].
     pub inner: PKStore,
+    /// Where this store will persist itself to.
     pub path: PathBuf,
   }
 
   impl FilePreKeyStore {
+    #[allow(missing_docs)]
     pub fn new(inner: PKStore, path: PathBuf) -> Self {
       Self { inner, path }
     }
@@ -598,13 +641,17 @@ pub mod file_persistence {
     }
   }
 
+  /// Implements [signal::SignedPreKeyStore] and [`Persistent::<PathBuf>`](super::Persistent::<PathBuf>).
   #[derive(Debug, Clone)]
   pub struct FileSignedPreKeyStore {
+    /// Delegates to implement [signal::SignedPreKeyStore].
     pub inner: SPKStore,
+    /// Where this store will persist itself to.
     pub path: PathBuf,
   }
 
   impl FileSignedPreKeyStore {
+    #[allow(missing_docs)]
     pub fn new(inner: SPKStore, path: PathBuf) -> Self {
       Self { inner, path }
     }
@@ -653,13 +700,17 @@ pub mod file_persistence {
     }
   }
 
+  /// Implements [signal::SessionStore] and [`Persistent::<PathBuf>`](super::Persistent::<PathBuf>).
   #[derive(Debug, Clone)]
   pub struct FileSessionStore {
+    /// Delegates to implement [signal::SessionStore].
     pub inner: SStore,
+    /// Where this store will persist itself to.
     pub path: PathBuf,
   }
 
   impl FileSessionStore {
+    #[allow(missing_docs)]
     pub fn new(inner: SStore, path: PathBuf) -> Self {
       Self { inner, path }
     }
@@ -704,13 +755,17 @@ pub mod file_persistence {
     }
   }
 
+  /// Implements [signal::SenderKeyStore] and [`Persistent::<PathBuf>`](super::Persistent::<PathBuf>).
   #[derive(Debug, Clone)]
   pub struct FileSenderKeyStore {
+    /// Delegates to implement [signal::SenderKeyStore].
     pub inner: SKStore,
+    /// Where this store will persist itself to.
     pub path: PathBuf,
   }
 
   impl FileSenderKeyStore {
+    #[allow(missing_docs)]
     pub fn new(inner: SKStore, path: PathBuf) -> Self {
       Self { inner, path }
     }
@@ -765,6 +820,7 @@ pub mod file_persistence {
     }
   }
 
+  /// Specialization of [super::Store] which persists every mutation to [PathBuf] locations.
   pub type FileStore = super::Store<
     PathBuf,
     FileSessionStore,
@@ -784,10 +840,17 @@ pub mod file_persistence {
     FileSenderKeyStore,
   >;
 
+  /// Specify whether a store should use a default value when initialization if the persistent
+  /// location has no entry yet.
   #[derive(Debug, Clone, Copy, PartialEq, Eq)]
   pub enum ExtractionBehavior {
+    /// Error if the persistent location has no entry (i.e. the path does not exist).
     ReadOrError,
+    /// Read from the persistent location if it exists, otherwise use a default value and write to
+    /// the persistent location.
     ReadOrDefault,
+    /// Disregard any entry at the persistent location and overwrite the persistent location with
+    /// a default value.
     OverwriteWithDefault,
   }
 
@@ -806,6 +869,9 @@ pub mod file_persistence {
       }
     }
 
+    /// Apply the precedence appropriate for this enum case to initialize `P` from a persistent
+    /// location at `path` and/or a default constructor `make_default`, then write the result to the
+    /// persistent location.
     pub async fn extract<P: Persistent<PathBuf>, F: FnOnce() -> P>(
       &self,
       path: PathBuf,
@@ -827,98 +893,116 @@ pub mod file_persistence {
     }
   }
 
+  /// Specify all the information needed to [`extract()`](Persistent::<PathBuf>::extract) every type
+  /// of mutable Signal store from its own individual [PathBuf] location.
   #[derive(Debug, Clone)]
   pub struct FileStoreRequest {
+    /// Where [FileSessionStore] will be read from and written to.
     pub session: PathBuf,
+    /// Where [FilePreKeyStore] will be read from and written to.
     pub prekey: PathBuf,
+    /// Where [FileSignedPreKeyStore] will be read from and written to.
     pub signed_prekey: PathBuf,
+    /// Where [FileIdStore] will be read from and written to.
     pub identity: PathBuf,
+    /// Where [FileSenderKeyStore] will be read from and written to.
     pub sender_key: PathBuf,
+    /// Specify values for [signal::InMemIdentityKeyStore::key_pair] and
+    /// [signal::InMemIdentityKeyStore::id].
     pub id: CryptographicIdentity,
+    /// How to initialize each store from its persistent location and whether to use a default.
     pub behavior: ExtractionBehavior,
   }
 
-  impl FileStore {
-    pub async fn initialize_file_backed_store_with_default(
-      request: FileStoreRequest,
-    ) -> Result<Self, Error> {
-      let FileStoreRequest {
-        session,
-        prekey,
-        signed_prekey,
-        identity,
-        sender_key,
-        id: CryptographicIdentity {
-          inner: key_pair,
-          seed: id,
-        },
-        behavior,
-      } = request;
-      Ok(Store {
-        session_store: behavior
-          .extract::<FileSessionStore, _>(session.clone(), || FileSessionStore {
-            inner: SStore::default(),
-            path: session,
-          })
-          .await?,
-        pre_key_store: behavior
-          .extract::<FilePreKeyStore, _>(prekey.clone(), || FilePreKeyStore {
-            inner: PKStore::default(),
-            path: prekey,
-          })
-          .await?,
-        signed_pre_key_store: behavior
-          .extract::<FileSignedPreKeyStore, _>(signed_prekey.clone(), || FileSignedPreKeyStore {
-            inner: SPKStore::default(),
-            path: signed_prekey,
-          })
-          .await?,
-        identity_store: match behavior
-          .extract::<FileIdStore, _>(identity.clone(), || FileIdStore {
-            inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id)),
-            path: identity,
-          })
-          .await
-        {
-          Ok(store) => {
-            let stored_identity = store.get_identity_key_pair(None).await?;
-            if key_pair != stored_identity {
-              return Err(Error::Store(StoreError::NonMatchingStoreIdentity(
-                stored_identity,
-                key_pair,
-              )));
-            }
-            let stored_seed = store.get_local_registration_id(None).await?;
-            if id != stored_seed {
-              return Err(Error::Store(StoreError::NonMatchingStoreSeed(
-                stored_seed,
-                id,
-              )));
-            }
-            store
+  /// Instantiate every [super::Persistent] store implementation and persist it to the specified
+  /// file paths. *See [ExtractionBehavior::extract].*
+  pub async fn initialize_file_backed_store_with_default(
+    request: FileStoreRequest,
+  ) -> Result<FileStore, Error> {
+    let FileStoreRequest {
+      session,
+      prekey,
+      signed_prekey,
+      identity,
+      sender_key,
+      id: CryptographicIdentity {
+        inner: key_pair,
+        seed: id,
+      },
+      behavior,
+    } = request;
+    Ok(Store {
+      session_store: behavior
+        .extract::<FileSessionStore, _>(session.clone(), || FileSessionStore {
+          inner: SStore::default(),
+          path: session,
+        })
+        .await?,
+      pre_key_store: behavior
+        .extract::<FilePreKeyStore, _>(prekey.clone(), || FilePreKeyStore {
+          inner: PKStore::default(),
+          path: prekey,
+        })
+        .await?,
+      signed_pre_key_store: behavior
+        .extract::<FileSignedPreKeyStore, _>(signed_prekey.clone(), || FileSignedPreKeyStore {
+          inner: SPKStore::default(),
+          path: signed_prekey,
+        })
+        .await?,
+      identity_store: match behavior
+        .extract::<FileIdStore, _>(identity.clone(), || FileIdStore {
+          inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id)),
+          path: identity,
+        })
+        .await
+      {
+        Ok(store) => {
+          let stored_identity = store.get_identity_key_pair(None).await?;
+          if key_pair != stored_identity {
+            return Err(Error::Store(StoreError::NonMatchingStoreIdentity(
+              stored_identity,
+              key_pair,
+            )));
           }
-          Err(e) => {
-            return Err(e);
+          let stored_seed = store.get_local_registration_id(None).await?;
+          if id != stored_seed {
+            return Err(Error::Store(StoreError::NonMatchingStoreSeed(
+              stored_seed,
+              id,
+            )));
           }
-        },
-        sender_key_store: behavior
-          .extract::<FileSenderKeyStore, _>(sender_key.clone(), || FileSenderKeyStore {
-            inner: SKStore::default(),
-            path: sender_key,
-          })
-          .await?,
-        _record: PhantomData,
-      })
-    }
+          store
+        }
+        Err(e) => {
+          return Err(e);
+        }
+      },
+      sender_key_store: behavior
+        .extract::<FileSenderKeyStore, _>(sender_key.clone(), || FileSenderKeyStore {
+          inner: SKStore::default(),
+          path: sender_key,
+        })
+        .await?,
+      _record: PhantomData,
+    })
   }
 
+  /// Factory for a [FileStoreRequest] which allocates persistent locations for each type of store
+  /// within a specified parent directory with [Self::into_layout].
   pub struct DirectoryStoreRequest {
+    /// Parent directory location of all [Persistent] file stores. Created by [Self::into_layout] if
+    /// it does not already exist.
     pub path: PathBuf,
+    /// Seeds [FileStoreRequest::id].
     pub id: CryptographicIdentity,
+    /// Seeds [FileStoreRequest::behavior].
     pub behavior: ExtractionBehavior,
   }
 
   impl DirectoryStoreRequest {
+    /// Create the containing directory if [Self::path] does not already exist, then allocate
+    /// filenames within that directory for each file-backed store.
     pub fn into_layout(self) -> Result<FileStoreRequest, Error> {
       let DirectoryStoreRequest { path, id, behavior } = self;
       fs::create_dir_all(&path)
@@ -940,11 +1024,13 @@ pub mod file_persistence {
     }
   }
 
+  /// Helper method around [initialize_file_backed_store_with_default] and
+  /// [DirectoryStoreRequest::into_layout].
   pub async fn initialize_file_backed_store(
     req: DirectoryStoreRequest,
   ) -> Result<FileStore, Error> {
     let layout = req.into_layout()?;
-    FileStore::initialize_file_backed_store_with_default(layout).await
+    initialize_file_backed_store_with_default(layout).await
   }
 }
 

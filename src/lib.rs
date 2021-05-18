@@ -103,10 +103,11 @@
 //! # }
 //!```
 
+/* Turn all warnings into errors! */
+#![deny(warnings)]
 /* Warn for missing docs in general, and hard require crate-level docs. */
 #![warn(missing_docs)]
 #![deny(missing_crate_level_docs)]
-/* #![deny(warnings)] */
 /* Taken from the `libsignal_protocol` crate. */
 #![deny(unsafe_code)]
 /* Make all doctests fail if they produce any warnings. */
