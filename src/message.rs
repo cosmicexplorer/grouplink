@@ -8,6 +8,10 @@
 //! use grouplink::{identity::*, session::*, message::*, store::file_persistence::*};
 //! # use futures::executor::block_on;
 //! use std::{convert::{TryFrom, TryInto}, path::PathBuf};
+//! # use std::env::set_current_dir;
+//! # use tempdir::TempDir;
+//! # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+//! # set_current_dir(tmp_dir.path()).unwrap();
 //! # block_on(async {
 //!
 //! // Create a new identity.
@@ -17,7 +21,7 @@
 //! // Create a mutable store.
 //! let mut alice_store =
 //!   initialize_file_backed_store(DirectoryStoreRequest {
-//!     path: PathBuf::from("/home/cosmicexplorer/alice"),
+//!     path: PathBuf::from("alice"), // Subdirectory of cwd.
 //!     id: alice.crypto,
 //!     behavior: ExtractionBehavior::OverwriteWithDefault,
 //!   }).await?;
@@ -27,7 +31,7 @@
 //! let bob_client = generate_sealed_sender_identity(bob.external.clone());
 //! let mut bob_store =
 //!   initialize_file_backed_store(DirectoryStoreRequest {
-//!     path: PathBuf::from("/home/cosmicexplorer/bob"),
+//!     path: PathBuf::from("bob"), // Subdirectory of cwd.
 //!     id: bob.crypto,
 //!     behavior: ExtractionBehavior::OverwriteWithDefault,
 //!   }).await?;
