@@ -32,7 +32,7 @@ use std::path::PathBuf;
 /// location of type `Record`.
 ///
 /// This trait wraps implementations of mutable stores like [libsignal_protocol::IdentityKeyStore]
-/// in a way can be committed to disk in between complex operations to avoid the possibility of
+/// in a way that can be committed to disk in between complex operations to avoid the possibility of
 /// invalid states.
 #[async_trait]
 pub trait Persistent<Record> {

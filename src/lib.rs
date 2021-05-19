@@ -8,7 +8,7 @@
 //! *`alice`* and *`bob`*:
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::{*, store::file_persistence::*};
+//! use grouplink::*;
 //! # use futures::executor::block_on;
 //! use std::{convert::{TryFrom, TryInto}, path::PathBuf};
 //! # use std::env::set_current_dir;
@@ -153,4 +153,10 @@ pub use session::{
   decrypt_message, encrypt_followup_message, encrypt_initial_message, generate_one_time_pre_key,
   generate_pre_key_bundle, generate_signed_pre_key, SealedSenderDecryptionRequest,
   SealedSenderFollowupMessageRequest, SealedSenderMessageRequest,
+};
+pub use store::{
+  file_persistence::{
+    initialize_file_backed_store, DirectoryStoreRequest, ExtractionBehavior, FileStoreRequest,
+  },
+  Persistent, Store,
 };

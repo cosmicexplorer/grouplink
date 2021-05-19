@@ -1,7 +1,7 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! Contains [enum@Error].
+//! Define top-level [enum@Error] types.
 
 use crate::identity::IdentityError;
 use crate::message::MessageError;

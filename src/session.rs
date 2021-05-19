@@ -121,7 +121,7 @@ impl SignedPreKey {
 ///
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::{*, store::file_persistence::*};
+/// use grouplink::*;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
@@ -221,7 +221,7 @@ impl OneTimePreKey {
 ///
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::{*, store::file_persistence::*};
+/// use grouplink::*;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
@@ -394,7 +394,7 @@ impl PreKeyBundle {
 /// [generate_one_time_pre_key]:
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::{*, store::file_persistence::*};
+/// use grouplink::*;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
@@ -570,15 +570,15 @@ impl TryFrom<&[u8]> for PreKeyBundle {
   }
 }
 
-/// Specify the parameters to create a new [SealedSenderMessage] to kick off a **new**
-/// message chain.
+/// Specify the parameters to create a new [SealedSenderMessage] **to kick off a new
+/// message chain.**
 ///
 /// This is currently implemented by handing off to
 /// a [SealedSenderFollowupMessageRequest] instance.
 #[derive(Debug, Clone)]
 pub struct SealedSenderMessageRequest<'a> {
-  /// Bundle for the recipient to then [PreKeyBundle::process] to create a new message chain from
-  /// a completed [X3DH] key agreement. Contains the [PreKeyBundle::destination] to send to.
+  /// Bundle for the recipient to then [PreKeyBundle::process] to **create a new message chain from
+  /// a completed [X3DH] key agreement.** Contains the [PreKeyBundle::destination] to send to.
   ///
   /// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
   pub bundle: PreKeyBundle,
@@ -588,8 +588,8 @@ pub struct SealedSenderMessageRequest<'a> {
   pub plaintext: &'a [u8],
 }
 
-/// Specify the parameters to create a new [SealedSenderMessage] to continue an **existing**
-/// message chain.
+/// Specify the parameters to create a new [SealedSenderMessage] **to continue an existing
+/// message chain.**
 #[derive(Debug, Clone)]
 pub struct SealedSenderFollowupMessageRequest<'a> {
   /// The external-facing identity to send to. This is *not* encrypted.
@@ -625,8 +625,8 @@ impl PartialEq for SealedSenderMessage {
 impl Eq for SealedSenderMessage {}
 
 impl SealedSenderMessage {
-  /// Mutate `session_store` and `id_store` to register a sealed-sender message for a **new**
-  /// message chain with the underlying [libsignal_protocol] crate.
+  /// Mutate `session_store` and `id_store` to **register a sealed-sender message for a new
+  /// message chain** with the underlying [libsignal_protocol] crate.
   ///
   /// Used in [encrypt_initial_message].
   pub async fn intern<
@@ -663,8 +663,8 @@ impl SealedSenderMessage {
     .await
   }
 
-  /// Mutate `session_store` and `id_store` to register a sealed-sender message for an **existing**
-  /// message chain with the underlying [libsignal_protocol] crate.
+  /// Mutate `session_store` and `id_store` to **register a sealed-sender message for an existing
+  /// message chain** with the underlying [libsignal_protocol] crate.
   ///
   /// Used in [encrypt_followup_message] and [Self::intern].
   pub async fn intern_followup<
@@ -709,14 +709,14 @@ impl SealedSenderMessage {
   }
 }
 
-/// Encrypt a [SealedSenderMessage] by invoking [PreKeyBundle::process]. This will kick off
-/// a **new** message chain.
+/// Encrypt a [SealedSenderMessage] by invoking [PreKeyBundle::process]. **This will kick off
+/// a new message chain.**
 ///
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::{*, store::file_persistence::*};
+/// use grouplink::*;
 /// # use futures::executor::block_on;
-/// use std::{convert::{TryFrom, TryInto}, path::PathBuf};
+/// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
 /// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
@@ -754,13 +754,12 @@ impl SealedSenderMessage {
 ///                                                  bob_signed_pre_key,
 ///                                                  bob_one_time_pre_key,
 ///                                                  &bob_store).await?;
-/// let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
 ///
 /// // Encrypt a message.
 /// # #[allow(unused_variables)]
 /// let initial_message = encrypt_initial_message(
 ///   SealedSenderMessageRequest {
-///     bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+///     bundle: bob_pre_key_bundle,
 ///     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
 ///                                       SenderCertTTL::default())?,
 ///     plaintext: "asdf".as_bytes(),
@@ -792,13 +791,13 @@ pub async fn encrypt_initial_message<
   .await
 }
 
-/// Encrypt a [SealedSenderMessage]. This will use an **existing** message chain.
+/// Encrypt a [SealedSenderMessage]. **This will use an existing message chain.**
 ///
 /// An *existing* message chain can be initialized by calling [encrypt_initial_message] and then
 /// [decrypt_message]:
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::{*, store::file_persistence::*};
+/// use grouplink::*;
 /// # use futures::executor::block_on;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
@@ -1050,13 +1049,13 @@ impl SealedSenderMessageResult {
   }
 }
 
-/// Decrypt a [SealedSenderMessage]. This will use an **existing** message chain.
+/// Decrypt a [SealedSenderMessage]. **This will use an existing message chain.**
 ///
 /// An *existing* message chain can be initialized by calling [encrypt_initial_message] or
 /// [encrypt_followup_message]:
 ///```
 /// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::{*, store::file_persistence::*};
+/// use grouplink::*;
 /// # use futures::executor::block_on;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
