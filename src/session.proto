@@ -10,6 +10,7 @@ import "identity.proto";
 /* Encapsulates all the information needed to complete an [X3DH] key agreement. *See [super::super::PreKeyBundle].*
  *
  * [libsignal_protocol]'s protobuf messages don't seem to contain any message with the [Self::destination] field here. Most of the rest is shared with [libsignal_protocol::PreKeySignalMessage].
+ *
  * **TODO: is this secure with sealed-sender?**
  *
  * [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
