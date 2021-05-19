@@ -342,7 +342,8 @@ fn generate_server_cert() -> Result<(ServerCert, signal::KeyPair), Error> {
   ))
 }
 
-/// One-time certificate object to validate each [Message::Sealed].
+/// One-time certificate object to validate each [Message::Sealed]. Requires a [ServerCert] to be
+/// created first, which is done in [generate_sender_cert].
 ///
 /// In the Signal app, this corresponds to information the frontend client would hand off to the
 /// backend server to create a sealed-sender message. In the [grouplink](crate) model, this is newly
