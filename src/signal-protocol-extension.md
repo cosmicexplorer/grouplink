@@ -34,6 +34,10 @@ It is possible that the Sesame protocol may be extensible to our case, but we wi
 
 We attempt to define an abstract description of the independent actors and operations currently required to initiate and continue a conversation in the Signal app. We will later [describe our modifications to this model](#decentralized-messaging-model).
 
+There exist some descriptions online which seem to correspond to the one below:
+- *high-level analysis* [^signal-analysis-medium]
+- *formal analysis* [^signal-analysis-formal]
+
 ### Actors
 1. **Device A:** a user of the Signal app, whom we name "Alice", is assumed to possess a device which contains the Signal client application.
 2. **Device B:** another user of the Signal app, whom we name "Bob", is assumed to have a separate device with the Signal client application.
@@ -128,3 +132,5 @@ Note that this involves **one less message sent than in Signal**, by virtue of s
 [^double-ratchet-kdf]: https://signal.org/docs/specifications/doubleratchet/#kdf-chains
 [^sealed-sender]: https://signal.org/blog/sealed-sender/
 [^wot]: https://en.wikipedia.org/wiki/Web_of_trust
+[^signal-analysis-medium]: https://medium.com/@justinomora/demystifying-the-signal-protocol-for-end-to-end-encryption-e2ee-ad6a567e6cb4
+[^signal-analysis-formal]: https://eprint.iacr.org/2016/1013.pdf
