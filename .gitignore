@@ -1,6 +1,6 @@
 # OSX files
 .DS_Store
 # Cargo output
-/target
+target/
 # Spack per-host output
 .spack-env/

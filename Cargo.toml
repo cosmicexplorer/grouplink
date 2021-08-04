@@ -25,3 +25,13 @@ futures = "0.3.7"
 proptest = "1.0.0"
 color-eyre = "0.5"
 tempdir = "0.3.7"
+
+[workspace]
+members = [
+    ".",
+    "cli",
+]
+default-members = [
+    ".",
+    "cli",
+]
