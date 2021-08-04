@@ -7,5 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "2.33.3"
+clap = "2"
+dirs = "3"
 grouplink = { path = "../" }

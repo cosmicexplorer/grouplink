@@ -35,7 +35,12 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
+use grouplink;
+
 use clap::{App, Arg, ArgGroup, SubCommand};
+use dirs;
+
+use std::{env, fs, path::PathBuf};
 
 fn main() {
   let matches = App::new("grouplink")
@@ -137,7 +142,16 @@ fn main() {
                     .takes_value(true)
                     .required(true),
                 )
-                .subcommand(SubCommand::with_name("generate").about("Generate a new store for the given identity."))
+                .subcommand(
+                  SubCommand::with_name("generate").about("Generate a new store for the given identity.")
+                    .arg(
+                      Arg::with_name("store-id").short("S").long("store-id")
+                        .value_name("STORE-ID")
+                        .help("Generate a store named STORE-ID.")
+                        .takes_value(true)
+                        .required(true),
+                    )
+                )
                 .subcommand(SubCommand::with_name("list").about("List all stores for a given identity."))
             )
             .subcommand(
@@ -239,5 +253,127 @@ fn main() {
     )
     .get_matches();
 
-  println!("Hello, world!");
+  match matches.subcommand() {
+    /* key */
+    ("key", Some(matches)) => {
+      let key_input = matches.value_of_os("key-input");
+      let output = matches.value_of_os("output");
+      match matches.subcommand() {
+        ("fingerprint", Some(matches)) => todo!(),
+        ("public", Some(matches)) => match matches.subcommand_name() {
+          Some("fingerprint") => todo!(),
+          None => todo!(),
+          _ => unreachable!(),
+        },
+        ("create", Some(matches)) => {
+          let interactive = matches.is_present("interactive");
+          todo!()
+        }
+        _ => unreachable!(),
+      }
+    }
+
+    /* identity */
+    ("identity", Some(matches)) => {
+      let public_key_fp = matches.value_of("public-key-fingerprint");
+      let private_key_fp = matches.value_of("private-key-fingerprint");
+      match matches.subcommand() {
+        ("import", Some(matches)) => {
+          let overwrite = matches.is_present("overwrite");
+          let key_input = matches.value_of_os("key-input");
+          todo!()
+        }
+        ("export", Some(matches)) => {
+          let output = matches.value_of_os("output");
+          todo!()
+        }
+        ("forget", Some(matches)) => todo!(),
+        _ => unreachable!(),
+      }
+    }
+
+    /* session */
+    ("session", Some(matches)) => match matches.subcommand() {
+      /* session/store */
+      ("store", Some(matches)) => match matches.subcommand() {
+        ("identity", Some(matches)) => {
+          let private_key_fp = matches.value_of("private-key-fingerprint").unwrap();
+          match matches.subcommand() {
+            ("generate", Some(matches)) => {
+              let store_id = matches.value_of("store-id").unwrap();
+              todo!()
+            }
+            ("list", _) => todo!(),
+            _ => unreachable!(),
+          }
+        }
+        ("info", Some(matches)) => {
+          let store_id = matches.value_of("store-id").unwrap();
+          match matches.subcommand() {
+            ("path", Some(matches)) => todo!(),
+            ("forget", Some(matches)) => todo!(),
+            ("identity", Some(matches)) => {
+              let public_key_fp = matches.value_of("public-key-fingerprint").unwrap();
+              match matches.subcommand() {
+                ("import", Some(matches)) => todo!(),
+                ("forget", Some(matches)) => todo!(),
+                _ => unreachable!(),
+              }
+            }
+            _ => unreachable!(),
+          }
+        }
+        _ => unreachable!(),
+      },
+
+      /* session/initiate */
+      ("initiate", Some(matches)) => {
+        let store_id = matches.value_of("store-id").unwrap();
+        /* TODO: <--send/--recv> */
+        /* TODO: <--public-key-fingerprint> */
+        match matches.subcommand() {
+          ("pre-key-bundle", Some(matches)) => todo!(),
+          ("initial-message", Some(matches)) => todo!(),
+          _ => unreachable!(),
+        }
+      }
+
+      /* session/ratchet */
+      ("ratchet", Some(matches)) => {
+        let store_id = matches.value_of("store-id").unwrap();
+        let session_id = matches.value_of("session-id").unwrap();
+        let input = matches.value_of_os("input");
+        let output = matches.value_of_os("output");
+        match matches.subcommand() {
+          ("send", Some(matches)) => todo!(),
+          ("recv", Some(matches)) => todo!(),
+          _ => unreachable!(),
+        }
+      }
+      _ => unreachable!(),
+    },
+    _ => unreachable!(),
+  }
+}
+
+fn grouplink_config_dir() -> PathBuf {
+  let ret: PathBuf = match env::var_os("GROUPLINK_CONFIG_DIR") {
+    Some(config_dir_path) => config_dir_path.into(),
+    None => dirs::config_dir()
+      .expect("expected to be able to access a config dir -- please set $GROUPLINK_CONFIG_DIR")
+      .join("grouplink"),
+  };
+  fs::create_dir_all(&ret).expect("expected to successfully create config dir");
+  ret
+}
+
+fn grouplink_cache_dir() -> PathBuf {
+  let ret: PathBuf = match env::var_os("GROUPLINK_CACHE_DIR") {
+    Some(cache_dir_path) => cache_dir_path.into(),
+    None => dirs::cache_dir()
+      .expect("expected to be able to access a cache dir -- please set $GROUPLINK_CACHE_DIR")
+      .join("grouplink"),
+  };
+  fs::create_dir_all(&ret).expect("expected to successfully create cache dir");
+  ret
 }
