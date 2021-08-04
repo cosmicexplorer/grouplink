@@ -1,10 +1,11 @@
 [package]
-name = "cli"
+name = "grouplink-cli"
 version = "0.1.0"
-authors = ["Danny McClanahan <1305167+cosmicexplorer@users.noreply.github.com>"]
+authors = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = "2.33.3"
 grouplink = { path = "../" }
