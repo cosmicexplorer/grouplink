@@ -166,6 +166,7 @@
 pub mod error;
 pub mod identity;
 pub mod message;
+pub mod serde;
 pub mod session;
 pub mod store;
 mod util;
