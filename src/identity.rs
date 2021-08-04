@@ -27,7 +27,7 @@ use uuid::Uuid;
 use libsignal_protocol::{IdentityKeyStore, ProtocolAddress};
 
 use std::{
-  convert::{From, TryFrom},
+  convert::{From, TryFrom, TryInto},
   default, fmt,
   time::{Duration, SystemTime, SystemTimeError},
 };
@@ -73,6 +73,54 @@ impl Spontaneous<()> for CryptographicIdentity {
     let inner = signal::IdentityKeyPair::generate(csprng);
     let seed: signal::SessionSeed = csprng.gen::<u32>().into();
     Self { inner, seed }
+  }
+}
+
+impl TryFrom<proto::CryptographicIdentity> for CryptographicIdentity {
+  type Error = Error;
+  fn try_from(proto_message: proto::CryptographicIdentity) -> Result<Self, Error> {
+    let proto::CryptographicIdentity { inner, seed } = proto_message.clone();
+    let inner_vec: Vec<u8> = inner.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `inner` field!"),
+        format!("{:?}", proto_message),
+      ))
+    })?;
+    let inner: &[u8] = inner_vec.as_ref();
+    let inner: signal::IdentityKeyPair = inner.try_into()?;
+    let seed: signal::SessionSeed = seed
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `seed` field!"),
+          format!("{:?}", proto_message),
+        ))
+      })?
+      .into();
+    Ok(Self { inner, seed })
+  }
+}
+
+impl TryFrom<&[u8]> for CryptographicIdentity {
+  type Error = Error;
+  fn try_from(value: &[u8]) -> Result<Self, Error> {
+    let proto_message = proto::CryptographicIdentity::decode(value)?;
+    Self::try_from(proto_message)
+  }
+}
+
+impl From<CryptographicIdentity> for proto::CryptographicIdentity {
+  fn from(value: CryptographicIdentity) -> Self {
+    proto::CryptographicIdentity {
+      inner: Some(value.inner.serialize().into_vec()),
+      seed: Some(value.seed.into()),
+    }
+  }
+}
+
+impl From<CryptographicIdentity> for Box<[u8]> {
+  fn from(value: CryptographicIdentity) -> Self {
+    let proto_message: proto::CryptographicIdentity = value.into();
+    encode_proto_message(proto_message)
   }
 }
 
@@ -246,6 +294,115 @@ pub fn generate_identity() -> Identity {
 impl fmt::Display for Identity {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "Identity {{ external={}, crypto=<...> }}", self.external)
+  }
+}
+
+impl TryFrom<proto::PrivateKey> for Identity {
+  type Error = Error;
+  fn try_from(proto_message: proto::PrivateKey) -> Result<Self, Error> {
+    let proto::PrivateKey { crypto, external } = proto_message.clone();
+    let crypto: CryptographicIdentity = crypto
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `crypto` field!"),
+          format!("{:?}", proto_message),
+        ))
+      })?
+      .try_into()?;
+    let external: ExternalIdentity = external
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `external` field!"),
+          format!("{:?}", proto_message),
+        ))
+      })?
+      .try_into()?;
+    Ok(Self { crypto, external })
+  }
+}
+
+impl TryFrom<&[u8]> for Identity {
+  type Error = Error;
+  fn try_from(value: &[u8]) -> Result<Self, Error> {
+    let proto_message = proto::PrivateKey::decode(value)?;
+    Self::try_from(proto_message)
+  }
+}
+
+impl From<Identity> for proto::PrivateKey {
+  fn from(value: Identity) -> Self {
+    let Identity { crypto, external } = value;
+    proto::PrivateKey {
+      crypto: Some(crypto.into()),
+      external: Some(external.into()),
+    }
+  }
+}
+
+impl From<Identity> for Box<[u8]> {
+  fn from(value: Identity) -> Self {
+    let proto_message: proto::PrivateKey = value.into();
+    encode_proto_message(proto_message)
+  }
+}
+
+#[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct PublicIdentity {
+  pub public_key: signal::IdentityKey,
+  pub external: ExternalIdentity,
+}
+
+impl TryFrom<proto::PublicKey> for PublicIdentity {
+  type Error = Error;
+  fn try_from(proto_message: proto::PublicKey) -> Result<Self, Error> {
+    let proto::PublicKey {
+      public_key,
+      external,
+    } = proto_message.clone();
+    let public_key_vec: Vec<u8> = public_key.ok_or_else(|| {
+      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+        format!("failed to find `public_key` field!"),
+        format!("{:?}", proto_message),
+      ))
+    })?;
+    let public_key: &[u8] = public_key_vec.as_ref();
+    let public_key: signal::IdentityKey = public_key.try_into()?;
+    let external: ExternalIdentity = external
+      .ok_or_else(|| {
+        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+          format!("failed to find `external` field!"),
+          format!("{:?}", proto_message),
+        ))
+      })?
+      .try_into()?;
+    Ok(Self {
+      public_key,
+      external,
+    })
+  }
+}
+
+impl TryFrom<&[u8]> for PublicIdentity {
+  type Error = Error;
+  fn try_from(value: &[u8]) -> Result<Self, Error> {
+    let proto_message = proto::PublicKey::decode(value)?;
+    Self::try_from(proto_message)
+  }
+}
+
+impl From<PublicIdentity> for proto::PublicKey {
+  fn from(value: PublicIdentity) -> Self {
+    proto::PublicKey {
+      public_key: Some(value.public_key.serialize().into_vec()),
+      external: Some(value.external.into()),
+    }
+  }
+}
+
+impl From<PublicIdentity> for Box<[u8]> {
+  fn from(value: PublicIdentity) -> Self {
+    let proto_message: proto::PublicKey = value.into();
+    encode_proto_message(proto_message)
   }
 }
 
