@@ -40,7 +40,7 @@ use grouplink;
 use clap::{App, Arg, ArgGroup, SubCommand};
 use dirs;
 
-use std::{env, fs, path::PathBuf};
+use std::{env, ffi::OsStr, fs, io, os::unix::ffi::OsStrExt, path::PathBuf};
 
 fn main() {
   let matches = App::new("grouplink")
@@ -256,10 +256,10 @@ fn main() {
   match matches.subcommand() {
     /* key */
     ("key", Some(matches)) => {
-      let key_input = matches.value_of_os("key-input");
-      let output = matches.value_of_os("output");
+      let key_input = input_stream(matches.value_of_os("key-input"));
+      let output = output_stream(matches.value_of_os("output"));
       match matches.subcommand() {
-        ("fingerprint", Some(matches)) => todo!(),
+        ("fingerprint", _) => todo!(),
         ("public", Some(matches)) => match matches.subcommand_name() {
           Some("fingerprint") => todo!(),
           None => todo!(),
@@ -275,16 +275,22 @@ fn main() {
 
     /* identity */
     ("identity", Some(matches)) => {
-      let public_key_fp = matches.value_of("public-key-fingerprint");
-      let private_key_fp = matches.value_of("private-key-fingerprint");
+      match (
+        matches.value_of("public-key-fingerprint"),
+        matches.value_of("private-key-fingerprint"),
+      ) {
+        (Some(public_key_fp), None) => todo!(),
+        (None, Some(private_key_fp)) => todo!(),
+        _ => unreachable!(),
+      }
       match matches.subcommand() {
         ("import", Some(matches)) => {
           let overwrite = matches.is_present("overwrite");
-          let key_input = matches.value_of_os("key-input");
+          let key_input = input_stream(matches.value_of_os("key-input"));
           todo!()
         }
         ("export", Some(matches)) => {
-          let output = matches.value_of_os("output");
+          let output = output_stream(matches.value_of_os("output"));
           todo!()
         }
         ("forget", Some(matches)) => todo!(),
@@ -342,8 +348,8 @@ fn main() {
       ("ratchet", Some(matches)) => {
         let store_id = matches.value_of("store-id").unwrap();
         let session_id = matches.value_of("session-id").unwrap();
-        let input = matches.value_of_os("input");
-        let output = matches.value_of_os("output");
+        let input = input_stream(matches.value_of_os("input"));
+        let output = output_stream(matches.value_of_os("output"));
         match matches.subcommand() {
           ("send", Some(matches)) => todo!(),
           ("recv", Some(matches)) => todo!(),
@@ -376,4 +382,24 @@ fn grouplink_cache_dir() -> PathBuf {
   };
   fs::create_dir_all(&ret).expect("expected to successfully create cache dir");
   ret
+}
+
+fn output_stream(output_specification: Option<&OsStr>) -> Box<dyn io::Write> {
+  match output_specification.map(|s| s.as_bytes()) {
+    None | Some(&[b'-']) => Box::new(io::stdout()),
+    Some(output_path) => Box::new(
+      fs::File::create(OsStr::from_bytes(output_path))
+        .expect("expected to be able to create output file"),
+    ),
+  }
+}
+
+fn input_stream(input_specification: Option<&OsStr>) -> Box<dyn io::Read> {
+  match input_specification.map(|s| s.as_bytes()) {
+    None | Some(&[b'-']) => Box::new(io::stdin()),
+    Some(input_path) => Box::new(
+      fs::File::open(OsStr::from_bytes(input_path))
+        .expect("expected to be able to read input file"),
+    ),
+  }
 }
