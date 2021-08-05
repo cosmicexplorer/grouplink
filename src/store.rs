@@ -227,6 +227,10 @@ pub mod conversions {
     }
   }
 
+  impl serde::Schema for proto::PreKeyStore {
+    type Source = PKStore;
+  }
+
   impl TryFrom<proto::PreKeyStore> for signal::InMemPreKeyStore {
     type Error = Error;
     fn try_from(value: proto::PreKeyStore) -> Result<Self, Error> {
@@ -243,33 +247,38 @@ pub mod conversions {
     }
   }
 
-  impl TryFrom<&[u8]> for PKStore {
+  impl TryFrom<proto::PreKeyStore> for PKStore {
     type Error = Error;
-    fn try_from(value: &[u8]) -> Result<Self, Error> {
-      let proto_message = proto::PreKeyStore::decode(value)?;
-      let object = signal::InMemPreKeyStore::try_from(proto_message)?;
-      Ok(PKStore(object))
+    fn try_from(value: proto::PreKeyStore) -> Result<Self, Error> {
+      let store: signal::InMemPreKeyStore = value.try_into()?;
+      Ok(store.into())
     }
   }
 
-  impl TryFrom<signal::InMemPreKeyStore> for proto::PreKeyStore {
-    type Error = Error;
-    fn try_from(value: signal::InMemPreKeyStore) -> Result<Self, Error> {
+  impl From<signal::InMemPreKeyStore> for proto::PreKeyStore {
+    fn from(value: signal::InMemPreKeyStore) -> Self {
       let signal::InMemPreKeyStore { pre_keys } = value;
       let pre_keys: HashMap<u32, Vec<u8>> = pre_keys
         .into_iter()
-        .map(|(id, record)| Ok((id.into(), record.serialize()?.to_vec())))
-        .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(proto::PreKeyStore { pre_keys })
+        .map(|(id, record)| {
+          Ok((
+            id.into(),
+            record
+              .serialize()
+              .expect("pre key record serialization error")
+              .to_vec(),
+          ))
+        })
+        .collect::<Result<HashMap<_, _>, Error>>()
+        .expect("collecting pre key records error");
+      proto::PreKeyStore { pre_keys }
     }
   }
 
-  impl TryFrom<PKStore> for Box<[u8]> {
-    type Error = Error;
-    fn try_from(value: PKStore) -> Result<Self, Error> {
-      let value: signal::InMemPreKeyStore = value.into();
-      let proto_message = proto::PreKeyStore::try_from(value)?;
-      Ok(encode_proto_message(proto_message))
+  impl From<PKStore> for proto::PreKeyStore {
+    fn from(value: PKStore) -> Self {
+      let store: signal::InMemPreKeyStore = value.into();
+      store.into()
     }
   }
 
@@ -289,6 +298,10 @@ pub mod conversions {
     }
   }
 
+  impl serde::Schema for proto::SignedPreKeyStore {
+    type Source = SPKStore;
+  }
+
   impl TryFrom<proto::SignedPreKeyStore> for signal::InMemSignedPreKeyStore {
     type Error = Error;
     fn try_from(value: proto::SignedPreKeyStore) -> Result<Self, Error> {
@@ -305,33 +318,38 @@ pub mod conversions {
     }
   }
 
-  impl TryFrom<&[u8]> for SPKStore {
+  impl TryFrom<proto::SignedPreKeyStore> for SPKStore {
     type Error = Error;
-    fn try_from(value: &[u8]) -> Result<Self, Error> {
-      let proto_message = proto::SignedPreKeyStore::decode(value)?;
-      let object = signal::InMemSignedPreKeyStore::try_from(proto_message)?;
-      Ok(SPKStore(object))
+    fn try_from(value: proto::SignedPreKeyStore) -> Result<Self, Error> {
+      let store: signal::InMemSignedPreKeyStore = value.try_into()?;
+      Ok(store.into())
     }
   }
 
-  impl TryFrom<signal::InMemSignedPreKeyStore> for proto::SignedPreKeyStore {
-    type Error = Error;
-    fn try_from(value: signal::InMemSignedPreKeyStore) -> Result<Self, Error> {
+  impl From<signal::InMemSignedPreKeyStore> for proto::SignedPreKeyStore {
+    fn from(value: signal::InMemSignedPreKeyStore) -> Self {
       let signal::InMemSignedPreKeyStore { signed_pre_keys } = value;
       let signed_pre_keys: HashMap<u32, Vec<u8>> = signed_pre_keys
         .into_iter()
-        .map(|(id, record)| Ok((id.into(), record.serialize()?.to_vec())))
-        .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(proto::SignedPreKeyStore { signed_pre_keys })
+        .map(|(id, record)| {
+          Ok((
+            id.into(),
+            record
+              .serialize()
+              .expect("spk record serialize failed")
+              .to_vec(),
+          ))
+        })
+        .collect::<Result<HashMap<_, _>, Error>>()
+        .expect("spk record collection failed");
+      proto::SignedPreKeyStore { signed_pre_keys }
     }
   }
 
-  impl TryFrom<SPKStore> for Box<[u8]> {
-    type Error = Error;
-    fn try_from(value: SPKStore) -> Result<Self, Error> {
-      let value: signal::InMemSignedPreKeyStore = value.into();
-      let proto_message = proto::SignedPreKeyStore::try_from(value)?;
-      Ok(encode_proto_message(proto_message))
+  impl From<SPKStore> for proto::SignedPreKeyStore {
+    fn from(value: SPKStore) -> Self {
+      let store: signal::InMemSignedPreKeyStore = value.into();
+      store.into()
     }
   }
 
@@ -351,6 +369,10 @@ pub mod conversions {
     }
   }
 
+  impl serde::Schema for proto::SessionStore {
+    type Source = SStore;
+  }
+
   impl TryFrom<proto::SessionStore> for signal::InMemSessionStore {
     type Error = Error;
     fn try_from(value: proto::SessionStore) -> Result<Self, Error> {
@@ -368,36 +390,39 @@ pub mod conversions {
     }
   }
 
-  impl TryFrom<&[u8]> for SStore {
+  impl TryFrom<proto::SessionStore> for SStore {
     type Error = Error;
-    fn try_from(value: &[u8]) -> Result<Self, Error> {
-      let proto_message = proto::SessionStore::decode(value)?;
-      let object = signal::InMemSessionStore::try_from(proto_message)?;
-      Ok(SStore(object))
+    fn try_from(value: proto::SessionStore) -> Result<Self, Error> {
+      let store: signal::InMemSessionStore = value.try_into()?;
+      Ok(store.into())
     }
   }
 
-  impl TryFrom<signal::InMemSessionStore> for proto::SessionStore {
-    type Error = Error;
-    fn try_from(value: signal::InMemSessionStore) -> Result<Self, Error> {
+  impl From<signal::InMemSessionStore> for proto::SessionStore {
+    fn from(value: signal::InMemSessionStore) -> Self {
       let signal::InMemSessionStore { sessions } = value;
       let sessions: HashMap<String, Vec<u8>> = sessions
         .into_iter()
         .map(|(address, record)| {
           let address_str = ExternalIdentity::from(address).as_unambiguous_string();
-          Ok((address_str, record.serialize()?.to_vec()))
+          Ok((
+            address_str,
+            record
+              .serialize()
+              .expect("sstore record serialize error")
+              .to_vec(),
+          ))
         })
-        .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(proto::SessionStore { sessions })
+        .collect::<Result<HashMap<_, _>, Error>>()
+        .expect("sstore collect record error");
+      proto::SessionStore { sessions }
     }
   }
 
-  impl TryFrom<SStore> for Box<[u8]> {
-    type Error = Error;
-    fn try_from(value: SStore) -> Result<Self, Error> {
-      let value: signal::InMemSessionStore = value.into();
-      let proto_message = proto::SessionStore::try_from(value)?;
-      Ok(encode_proto_message(proto_message))
+  impl From<SStore> for proto::SessionStore {
+    fn from(value: SStore) -> Self {
+      let store: signal::InMemSessionStore = value.into();
+      store.into()
     }
   }
 
@@ -415,6 +440,10 @@ pub mod conversions {
     fn from(value: SKStore) -> Self {
       value.0
     }
+  }
+
+  impl serde::Schema for proto::SenderKeyStore {
+    type Source = SKStore;
   }
 
   impl TryFrom<proto::SenderKeyStore> for signal::InMemSenderKeyStore {
@@ -449,37 +478,40 @@ pub mod conversions {
     }
   }
 
-  impl TryFrom<&[u8]> for SKStore {
+  impl TryFrom<proto::SenderKeyStore> for SKStore {
     type Error = Error;
-    fn try_from(value: &[u8]) -> Result<Self, Error> {
-      let proto_message = proto::SenderKeyStore::decode(value)?;
-      let object = signal::InMemSenderKeyStore::try_from(proto_message)?;
-      Ok(SKStore(object))
+    fn try_from(value: proto::SenderKeyStore) -> Result<Self, Error> {
+      let store: signal::InMemSenderKeyStore = value.try_into()?;
+      Ok(store.into())
     }
   }
 
-  impl TryFrom<signal::InMemSenderKeyStore> for proto::SenderKeyStore {
-    type Error = Error;
-    fn try_from(value: signal::InMemSenderKeyStore) -> Result<Self, Error> {
+  impl From<signal::InMemSenderKeyStore> for proto::SenderKeyStore {
+    fn from(value: signal::InMemSenderKeyStore) -> Self {
       let signal::InMemSenderKeyStore { keys } = value;
       let keys: HashMap<String, Vec<u8>> = keys
         .into_iter()
         .map(|((address, uuid), record)| {
           let address_str = ExternalIdentity::from(address.into_owned()).as_unambiguous_string();
           let merged_address_uuid = format!("{}:{}", address_str, uuid.to_hyphenated().to_string());
-          Ok((merged_address_uuid, record.serialize()?.to_vec()))
+          Ok((
+            merged_address_uuid,
+            record
+              .serialize()
+              .expect("skstore record serialize error")
+              .to_vec(),
+          ))
         })
-        .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(proto::SenderKeyStore { keys })
+        .collect::<Result<HashMap<_, _>, Error>>()
+        .expect("skstore record collect error");
+      proto::SenderKeyStore { keys }
     }
   }
 
-  impl TryFrom<SKStore> for Box<[u8]> {
-    type Error = Error;
-    fn try_from(value: SKStore) -> Result<Self, Error> {
-      let value: signal::InMemSenderKeyStore = value.into();
-      let proto_message = proto::SenderKeyStore::try_from(value)?;
-      Ok(encode_proto_message(proto_message))
+  impl From<SKStore> for proto::SenderKeyStore {
+    fn from(value: SKStore) -> Self {
+      let store: signal::InMemSenderKeyStore = value.into();
+      store.into()
     }
   }
 }
@@ -631,7 +663,8 @@ pub mod file_persistence {
   #[async_trait]
   impl Persistent<PathBuf> for FilePreKeyStore {
     async fn persist(&mut self) -> Result<(), Error> {
-      let bytes: Box<[u8]> = self.inner.clone().try_into()?;
+      let bytes: Box<[u8]> =
+        serde::Protobuf::<PKStore, proto::PreKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
@@ -639,7 +672,7 @@ pub mod file_persistence {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
-      let inner = PKStore::try_from(bytes.as_ref())?;
+      let inner = serde::Protobuf::<PKStore, proto::PreKeyStore>::deserialize(&bytes)?;
       Ok(Self {
         inner,
         path: record,
@@ -690,7 +723,8 @@ pub mod file_persistence {
   #[async_trait]
   impl Persistent<PathBuf> for FileSignedPreKeyStore {
     async fn persist(&mut self) -> Result<(), Error> {
-      let bytes: Box<[u8]> = self.inner.clone().try_into()?;
+      let bytes: Box<[u8]> =
+        serde::Protobuf::<SPKStore, proto::SignedPreKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
@@ -698,7 +732,7 @@ pub mod file_persistence {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
-      let inner = SPKStore::try_from(bytes.as_ref())?;
+      let inner = serde::Protobuf::<SPKStore, proto::SignedPreKeyStore>::deserialize(&bytes)?;
       Ok(Self {
         inner,
         path: record,
@@ -745,7 +779,8 @@ pub mod file_persistence {
   #[async_trait]
   impl Persistent<PathBuf> for FileSessionStore {
     async fn persist(&mut self) -> Result<(), Error> {
-      let bytes: Box<[u8]> = self.inner.clone().try_into()?;
+      let bytes: Box<[u8]> =
+        serde::Protobuf::<SStore, proto::SessionStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
@@ -753,7 +788,7 @@ pub mod file_persistence {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
-      let inner = SStore::try_from(bytes.as_ref())?;
+      let inner = serde::Protobuf::<SStore, proto::SessionStore>::deserialize(&bytes)?;
       Ok(Self {
         inner,
         path: record,
@@ -810,7 +845,8 @@ pub mod file_persistence {
   #[async_trait]
   impl Persistent<PathBuf> for FileSenderKeyStore {
     async fn persist(&mut self) -> Result<(), Error> {
-      let bytes: Box<[u8]> = self.inner.clone().try_into()?;
+      let bytes: Box<[u8]> =
+        serde::Protobuf::<SKStore, proto::SenderKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
@@ -818,7 +854,7 @@ pub mod file_persistence {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
-      let inner = SKStore::try_from(bytes.as_ref())?;
+      let inner = serde::Protobuf::<SKStore, proto::SenderKeyStore>::deserialize(&bytes)?;
       Ok(Self {
         inner,
         path: record,
