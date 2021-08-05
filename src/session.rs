@@ -20,8 +20,8 @@ use crate::error::{Error, ProtobufCodingFailure};
 use crate::identity::{
   CryptographicIdentity, ExternalIdentity, SealedSenderIdentity, SenderCert, Spontaneous,
 };
+use crate::serde::{self, *};
 use crate::store::{Persistent, Store};
-use crate::util::encode_proto_message;
 
 use libsignal_protocol as signal;
 use prost::Message;
@@ -447,129 +447,6 @@ pub async fn generate_pre_key_bundle<
   Ok(PreKeyBundle::new(req)?)
 }
 
-impl TryFrom<PreKeyBundle> for proto::PreKeyBundle {
-  type Error = Error;
-  fn try_from(value: PreKeyBundle) -> Result<Self, Error> {
-    let PreKeyBundle { destination, inner } = value;
-    Ok(proto::PreKeyBundle {
-      destination: Some(destination.into()),
-      registration_id: Some(inner.registration_id()?),
-      pre_key_id: inner.pre_key_id()?.map(|id| id.into()),
-      pre_key_public: inner
-        .pre_key_public()?
-        .map(|key| key.serialize().into_vec()),
-      signed_pre_key_id: Some(inner.signed_pre_key_id()?.into()),
-      signed_pre_key_public: Some(inner.signed_pre_key_public()?.serialize().into_vec()),
-      signed_pre_key_signature: Some(inner.signed_pre_key_signature()?.to_vec()),
-      identity_key: Some(inner.identity_key()?.serialize().into_vec()),
-    })
-  }
-}
-
-impl TryFrom<PreKeyBundle> for Box<[u8]> {
-  type Error = Error;
-  fn try_from(value: PreKeyBundle) -> Result<Self, Error> {
-    let proto_message: proto::PreKeyBundle = value.try_into()?;
-    Ok(encode_proto_message(proto_message))
-  }
-}
-
-impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
-  type Error = Error;
-  fn try_from(value: proto::PreKeyBundle) -> Result<Self, Error> {
-    let proto::PreKeyBundle {
-      destination,
-      registration_id,
-      pre_key_id,
-      pre_key_public,
-      signed_pre_key_id,
-      signed_pre_key_public,
-      signed_pre_key_signature,
-      identity_key,
-    } = value.clone();
-    let destination: ExternalIdentity = destination
-      .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-          format!("failed to find `destination` field!"),
-          format!("{:?}", value),
-        ))
-      })?
-      .try_into()?;
-    let registration_id: u32 = registration_id.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `registration_id` field!"),
-        format!("{:?}", value),
-      ))
-    })?;
-    let pre_key_id: Option<signal::PreKeyId> = pre_key_id.map(|key| key.into());
-    let pre_key_public: Option<signal::PublicKey> = match pre_key_public {
-      Some(key) => Some(signal::PublicKey::try_from(key.as_ref())?),
-      None => None,
-    };
-    let pre_key: Option<(signal::PreKeyId, signal::PublicKey)> = match (pre_key_id, pre_key_public)
-    {
-      (Some(id), Some(key)) => Some((id, key)),
-      (None, None) => None,
-      _ => {
-        return Err(Error::ProtobufDecodingError(ProtobufCodingFailure::FieldCompositionWasIncorrect(
-          format!("if either the fields `pre_key_id` or `pre_key_public` are provided, then *BOTH* must be provided!"),
-          format!("{:?}", value)
-        )))
-      }
-    };
-    let signed_pre_key_id: signal::SignedPreKeyId = signed_pre_key_id
-      .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-          format!("failed to find `signed_pre_key_id` field!"),
-          format!("{:?}", value),
-        ))
-      })?
-      .into();
-    let signed_pre_key_public: signal::PublicKey = signed_pre_key_public.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `signed_pre_key_public` field!"),
-        format!("{:?}", value),
-      ))
-    })?[..]
-      .try_into()?;
-    let signed_pre_key_signature: Vec<u8> = signed_pre_key_signature
-      .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-          format!("failed to find `signed_pre_key_signature` field!"),
-          format!("{:?}", value),
-        ))
-      })?
-      .to_vec();
-    let identity_key: signal::IdentityKey = identity_key.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find `identity_key` field!"),
-        format!("{:?}", value),
-      ))
-    })?[..]
-      .try_into()?;
-    Ok(Self {
-      destination: destination.clone(),
-      inner: signal::PreKeyBundle::new(
-        registration_id,
-        destination.device_id.into(),
-        pre_key,
-        signed_pre_key_id,
-        signed_pre_key_public,
-        signed_pre_key_signature,
-        identity_key,
-      )?,
-    })
-  }
-}
-
-impl TryFrom<&[u8]> for PreKeyBundle {
-  type Error = Error;
-  fn try_from(value: &[u8]) -> Result<Self, Error> {
-    let proto_message = proto::PreKeyBundle::decode(value)?;
-    Self::try_from(proto_message)
-  }
-}
-
 /// Specify the parameters to create a new [SealedSenderMessage] to **securely transfer the identity
 /// of [Self::bundle] to another user.**
 ///
@@ -670,7 +547,8 @@ impl SealedSenderMessage {
     } = request;
 
     let dest: signal::ProtocolAddress = destination.into();
-    let encoded_bundle: Box<[u8]> = bundle.try_into()?;
+    let protobuf_bundle = serde::Protobuf::<PreKeyBundle, proto::PreKeyBundle>::new(bundle);
+    let encoded_bundle: Box<[u8]> = protobuf_bundle.serialize();
 
     let usmc = signal::UnidentifiedSenderMessageContent::new(
       signal::CiphertextMessageType::EncryptedPreKeyBundle,
@@ -988,66 +866,6 @@ pub async fn encrypt_followup_message<
   .await
 }
 
-impl From<SealedSenderMessage> for proto::SealedSenderMessage {
-  fn from(value: SealedSenderMessage) -> Self {
-    let SealedSenderMessage {
-      trust_root,
-      encrypted_message,
-    } = value;
-    proto::SealedSenderMessage {
-      trust_root_public_key: Some(trust_root.serialize().into_vec()),
-      encrypted_sealed_sender_message: Some(encrypted_message.into_vec()),
-    }
-  }
-}
-
-impl From<SealedSenderMessage> for Box<[u8]> {
-  fn from(value: SealedSenderMessage) -> Self {
-    let proto_message: proto::SealedSenderMessage = value.into();
-    encode_proto_message(proto_message)
-  }
-}
-
-impl TryFrom<proto::SealedSenderMessage> for SealedSenderMessage {
-  type Error = Error;
-  fn try_from(value: proto::SealedSenderMessage) -> Result<Self, Error> {
-    let proto::SealedSenderMessage {
-      trust_root_public_key,
-      encrypted_sealed_sender_message,
-    } = value.clone();
-    let trust_root_public_key = signal::PublicKey::try_from(
-      trust_root_public_key
-        .ok_or_else(|| {
-          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `trust_root_public_key` field!"),
-            format!("{:?}", value),
-          ))
-        })?
-        .as_ref(),
-    )?;
-    let encrypted_sealed_sender_message: Box<[u8]> = encrypted_sealed_sender_message
-      .ok_or_else(|| {
-        Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-          format!("failed to find `encrypted_sealed_sender_message` field!"),
-          format!("{:?}", value),
-        ))
-      })?
-      .into_boxed_slice();
-    Ok(Self {
-      trust_root: trust_root_public_key,
-      encrypted_message: encrypted_sealed_sender_message,
-    })
-  }
-}
-
-impl TryFrom<&[u8]> for SealedSenderMessage {
-  type Error = Error;
-  fn try_from(value: &[u8]) -> Result<Self, Error> {
-    let proto_message = proto::SealedSenderMessage::decode(value)?;
-    Self::try_from(proto_message)
-  }
-}
-
 /// Specify the parameters to decrypt a [SealedSenderMessage].
 #[derive(Debug, Clone)]
 pub struct SealedSenderDecryptionRequest {
@@ -1320,6 +1138,210 @@ pub async fn decrypt_message<
   )
   .await
 }
+
+mod serde_impl {
+  use super::*;
+  use crate::{error::Error, serde};
+  use std::convert::{AsRef, TryFrom, TryInto};
+
+  mod pre_key_bundle {
+    use super::*;
+
+    impl serde::Schema for proto::PreKeyBundle {
+      type Source = PreKeyBundle;
+    }
+
+    /// Tons of .expect() calls in here since the signal client library doesn't ensure all the
+    /// fields are there.
+    impl From<PreKeyBundle> for proto::PreKeyBundle {
+      fn from(value: PreKeyBundle) -> Self {
+        let PreKeyBundle { destination, inner } = value;
+        proto::PreKeyBundle {
+          destination: Some(destination.into()),
+          registration_id: Some(inner.registration_id().expect("missing registration_id")),
+          pre_key_id: inner
+            .pre_key_id()
+            .expect("missing pre_key_id")
+            .map(|id| id.into()),
+          pre_key_public: inner
+            .pre_key_public()
+            .expect("missing pre_key_public")
+            .map(|key| key.serialize().into_vec()),
+          signed_pre_key_id: Some(
+            inner
+              .signed_pre_key_id()
+              .expect("missing signed_pre_key_id")
+              .into(),
+          ),
+          signed_pre_key_public: Some(
+            inner
+              .signed_pre_key_public()
+              .expect("missing signed_pre_key_public")
+              .serialize()
+              .into_vec(),
+          ),
+          signed_pre_key_signature: Some(
+            inner
+              .signed_pre_key_signature()
+              .expect("missing signed_pre_key_signature")
+              .to_vec(),
+          ),
+          identity_key: Some(
+            inner
+              .identity_key()
+              .expect("missing identity_key")
+              .serialize()
+              .into_vec(),
+          ),
+        }
+      }
+    }
+
+    impl TryFrom<proto::PreKeyBundle> for PreKeyBundle {
+      type Error = Error;
+      fn try_from(value: proto::PreKeyBundle) -> Result<Self, Error> {
+        let proto::PreKeyBundle {
+          destination,
+          registration_id,
+          pre_key_id,
+          pre_key_public,
+          signed_pre_key_id,
+          signed_pre_key_public,
+          signed_pre_key_signature,
+          identity_key,
+        } = value.clone();
+        let destination: ExternalIdentity = destination
+          .ok_or_else(|| {
+            Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+              format!("failed to find `destination` field!"),
+              format!("{:?}", value),
+            ))
+          })?
+          .try_into()?;
+        let registration_id: u32 = registration_id.ok_or_else(|| {
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            format!("failed to find `registration_id` field!"),
+            format!("{:?}", value),
+          ))
+        })?;
+        let pre_key_id: Option<signal::PreKeyId> = pre_key_id.map(|key| key.into());
+        let pre_key_public: Option<signal::PublicKey> = match pre_key_public {
+          Some(key) => Some(signal::PublicKey::try_from(key.as_ref())?),
+          None => None,
+        };
+        let pre_key: Option<(signal::PreKeyId, signal::PublicKey)> = match (pre_key_id, pre_key_public)
+    {
+      (Some(id), Some(key)) => Some((id, key)),
+      (None, None) => None,
+      _ => {
+        return Err(Error::ProtobufDecodingError(ProtobufCodingFailure::FieldCompositionWasIncorrect(
+          format!("if either the fields `pre_key_id` or `pre_key_public` are provided, then *BOTH* must be provided!"),
+          format!("{:?}", value)
+        )))
+      }
+    };
+        let signed_pre_key_id: signal::SignedPreKeyId = signed_pre_key_id
+          .ok_or_else(|| {
+            Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+              format!("failed to find `signed_pre_key_id` field!"),
+              format!("{:?}", value),
+            ))
+          })?
+          .into();
+        let signed_pre_key_public: signal::PublicKey = signed_pre_key_public.ok_or_else(|| {
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            format!("failed to find `signed_pre_key_public` field!"),
+            format!("{:?}", value),
+          ))
+        })?[..]
+          .try_into()?;
+        let signed_pre_key_signature: Vec<u8> = signed_pre_key_signature
+          .ok_or_else(|| {
+            Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+              format!("failed to find `signed_pre_key_signature` field!"),
+              format!("{:?}", value),
+            ))
+          })?
+          .to_vec();
+        let identity_key: signal::IdentityKey = identity_key.ok_or_else(|| {
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            format!("failed to find `identity_key` field!"),
+            format!("{:?}", value),
+          ))
+        })?[..]
+          .try_into()?;
+        Ok(Self {
+          destination: destination.clone(),
+          inner: signal::PreKeyBundle::new(
+            registration_id,
+            destination.device_id.into(),
+            pre_key,
+            signed_pre_key_id,
+            signed_pre_key_public,
+            signed_pre_key_signature,
+            identity_key,
+          )?,
+        })
+      }
+    }
+  }
+  pub use pre_key_bundle::*;
+
+  mod sealed_sender_message {
+    use super::*;
+
+    impl serde::Schema for proto::SealedSenderMessage {
+      type Source = SealedSenderMessage;
+    }
+
+    impl From<SealedSenderMessage> for proto::SealedSenderMessage {
+      fn from(value: SealedSenderMessage) -> Self {
+        let SealedSenderMessage {
+          trust_root,
+          encrypted_message,
+        } = value;
+        proto::SealedSenderMessage {
+          trust_root_public_key: Some(trust_root.serialize().into_vec()),
+          encrypted_sealed_sender_message: Some(encrypted_message.into_vec()),
+        }
+      }
+    }
+
+    impl TryFrom<proto::SealedSenderMessage> for SealedSenderMessage {
+      type Error = Error;
+      fn try_from(value: proto::SealedSenderMessage) -> Result<Self, Error> {
+        let proto::SealedSenderMessage {
+          trust_root_public_key,
+          encrypted_sealed_sender_message,
+        } = value.clone();
+        let trust_root_public_key = signal::PublicKey::try_from(
+          trust_root_public_key
+            .ok_or_else(|| {
+              Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+                format!("failed to find `trust_root_public_key` field!"),
+                format!("{:?}", value),
+              ))
+            })?
+            .as_ref(),
+        )?;
+        let encrypted_sealed_sender_message: Box<[u8]> = encrypted_sealed_sender_message
+          .ok_or_else(|| {
+            Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+              format!("failed to find `encrypted_sealed_sender_message` field!"),
+              format!("{:?}", value),
+            ))
+          })?
+          .into_boxed_slice();
+        Ok(Self {
+          trust_root: trust_root_public_key,
+          encrypted_message: encrypted_sealed_sender_message,
+        })
+      }
+    }
+  }
+  pub use sealed_sender_message::*;
+}
+pub use serde_impl::*;
 
 #[cfg(test)]
 pub mod proptest_strategies {

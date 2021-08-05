@@ -8,10 +8,10 @@
 //! *`alice`* and *`bob`*:
 //!```
 //! # fn main() -> Result<(), grouplink::error::Error> {
-//! use grouplink::*;
+//! use grouplink::{*, serde::*};
 //! use libsignal_protocol::{IdentityKeyStore, IdentityKey};
 //! # use futures::executor::block_on;
-//! use std::{convert::{TryFrom, TryInto}, path::PathBuf};
+//! use std::path::PathBuf;
 //! # use std::env::set_current_dir;
 //! # use tempdir::TempDir;
 //! # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
@@ -74,7 +74,9 @@
 //!   },
 //!   &mut alice_store,
 //! ).await?;
-//! let bundle: PreKeyBundle = bundle.plaintext.as_ref().try_into()?;
+//! let bundle: PreKeyBundle =
+//!   serde::Protobuf::<PreKeyBundle, session::proto::PreKeyBundle>::deserialize(
+//!     &bundle.plaintext)?;
 //!
 //! // Encrypt a message.
 //! let initial_message = encrypt_initial_message(
@@ -87,12 +89,15 @@
 //!   },
 //!   &mut alice_store,
 //! ).await?;
-//! let encoded_sealed_sender_message: Box<[u8]> = Message::Sealed(initial_message).try_into()?;
+//! let encoded_sealed_sender_message: Box<[u8]> =
+//!   serde::Protobuf::<Message, message::proto::Message>::new(Message::Sealed(initial_message))
+//!     .serialize();
 //!
 //! // Decrypt the sealed-sender message.
 //! let message_result = decrypt_message(
 //!   SealedSenderDecryptionRequest {
-//!     inner: Message::try_from(encoded_sealed_sender_message.as_ref())?.assert_sealed()?,
+//!     inner: serde::Protobuf::<Message, message::proto::Message>::deserialize(
+//!       &encoded_sealed_sender_message)?.assert_sealed()?,
 //!     local_identity: bob_client.clone(),
 //!   },
 //!   &mut bob_store,
@@ -111,11 +116,14 @@
 //!   },
 //!   &mut bob_store,
 //! ).await?;
-//! let encoded_follow_up_message: Box<[u8]> = Message::Sealed(bob_follow_up).try_into()?;
+//! let encoded_follow_up_message: Box<[u8]> =
+//!   serde::Protobuf::<Message, message::proto::Message>::new(Message::Sealed(bob_follow_up))
+//!     .serialize();
 //!
 //! let alice_incoming = decrypt_message(
 //!   SealedSenderDecryptionRequest {
-//!     inner: Message::try_from(encoded_follow_up_message.as_ref())?.assert_sealed()?,
+//!     inner: serde::Protobuf::<Message, message::proto::Message>::deserialize(
+//!       &encoded_follow_up_message)?.assert_sealed()?,
 //!     local_identity: alice_client.clone(),
 //!   },
 //!   &mut alice_store,

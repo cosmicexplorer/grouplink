@@ -71,54 +71,61 @@ impl Message {
   }
 }
 
-impl TryFrom<Message> for proto::Message {
-  type Error = Error;
-  fn try_from(value: Message) -> Result<Self, Error> {
-    Ok(proto::Message {
-      r#type: Some(match value {
-        Message::Bundle(pre_key_bundle) => proto::message::Type::Bundle(pre_key_bundle.try_into()?),
-        Message::Sealed(sealed_sender_message) => {
-          proto::message::Type::SealedSenderMessage(sealed_sender_message.try_into()?)
+mod serde_impl {
+  use super::*;
+  use crate::{error::Error, serde};
+  use std::convert::{AsRef, TryFrom, TryInto};
+
+  mod message {
+    use super::*;
+
+    impl serde::Schema for proto::Message {
+      type Source = Message;
+    }
+
+    impl From<Message> for proto::Message {
+      fn from(value: Message) -> Self {
+        proto::Message {
+          r#type: Some(match value {
+            Message::Bundle(pre_key_bundle) => proto::message::Type::Bundle(
+              pre_key_bundle
+                .try_into()
+                .expect("expected pre_key_bundle in bundle message"),
+            ),
+            Message::Sealed(sealed_sender_message) => proto::message::Type::SealedSenderMessage(
+              sealed_sender_message
+                .try_into()
+                .expect("expected sealed_sender_message in sealed message"),
+            ),
+          }),
         }
-      }),
-    })
-  }
-}
-
-impl TryFrom<Message> for Box<[u8]> {
-  type Error = Error;
-  fn try_from(value: Message) -> Result<Self, Error> {
-    let proto_message: proto::Message = value.try_into()?;
-    Ok(encode_proto_message(proto_message))
-  }
-}
-
-impl TryFrom<proto::Message> for Message {
-  type Error = Error;
-  fn try_from(value: proto::Message) -> Result<Self, Error> {
-    let proto::Message { r#type: inner } = value.clone();
-    let inner = inner.ok_or_else(|| {
-      Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-        format!("failed to find the `type` field!"),
-        format!("{:?}", value),
-      ))
-    })?;
-    Ok(match inner {
-      proto::message::Type::Bundle(pre_key_bundle) => Message::Bundle(pre_key_bundle.try_into()?),
-      proto::message::Type::SealedSenderMessage(sealed_sender_message) => {
-        Message::Sealed(sealed_sender_message.try_into()?)
       }
-    })
-  }
-}
+    }
 
-impl TryFrom<&[u8]> for Message {
-  type Error = Error;
-  fn try_from(value: &[u8]) -> Result<Self, Error> {
-    let proto_message = proto::Message::decode(value)?;
-    Self::try_from(proto_message)
+    impl TryFrom<proto::Message> for Message {
+      type Error = Error;
+      fn try_from(value: proto::Message) -> Result<Self, Error> {
+        let proto::Message { r#type: inner } = value.clone();
+        let inner = inner.ok_or_else(|| {
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            format!("failed to find the `type` field!"),
+            format!("{:?}", value),
+          ))
+        })?;
+        Ok(match inner {
+          proto::message::Type::Bundle(pre_key_bundle) => {
+            Message::Bundle(pre_key_bundle.try_into()?)
+          }
+          proto::message::Type::SealedSenderMessage(sealed_sender_message) => {
+            Message::Sealed(sealed_sender_message.try_into()?)
+          }
+        })
+      }
+    }
   }
+  pub use message::*;
 }
+pub use serde_impl::*;
 
 /* #[cfg(test)] */
 /* pub mod test { */

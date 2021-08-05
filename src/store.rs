@@ -93,6 +93,7 @@ pub mod conversions {
   use super::proto;
   use crate::error::{Error, ProtobufCodingFailure};
   use crate::identity::ExternalIdentity;
+  use crate::serde;
   use crate::util::encode_proto_message;
 
   use libsignal_protocol as signal;
@@ -101,7 +102,7 @@ pub mod conversions {
 
   use std::borrow::Cow;
   use std::collections::HashMap;
-  use std::convert::TryFrom;
+  use std::convert::{TryFrom, TryInto};
 
   /* TODO: use property-based testing to validate these conversions (with TryFrom)! */
   /// Implements [signal::IdentityKeyStore].
@@ -125,6 +126,10 @@ pub mod conversions {
     fn from(value: IdStore) -> Self {
       value.0
     }
+  }
+
+  impl serde::Schema for proto::IdentityKeyStore {
+    type Source = IdStore;
   }
 
   impl TryFrom<proto::IdentityKeyStore> for signal::InMemIdentityKeyStore {
@@ -168,12 +173,11 @@ pub mod conversions {
     }
   }
 
-  impl TryFrom<&[u8]> for IdStore {
+  impl TryFrom<proto::IdentityKeyStore> for IdStore {
     type Error = Error;
-    fn try_from(value: &[u8]) -> Result<Self, Error> {
-      let proto_message = proto::IdentityKeyStore::decode(value)?;
-      let object = signal::InMemIdentityKeyStore::try_from(proto_message)?;
-      Ok(IdStore(object))
+    fn try_from(value: proto::IdentityKeyStore) -> Result<Self, Error> {
+      let store: signal::InMemIdentityKeyStore = value.try_into()?;
+      Ok(store.into())
     }
   }
 
@@ -200,11 +204,10 @@ pub mod conversions {
     }
   }
 
-  impl From<IdStore> for Box<[u8]> {
+  impl From<IdStore> for proto::IdentityKeyStore {
     fn from(value: IdStore) -> Self {
-      let value: signal::InMemIdentityKeyStore = value.into();
-      let proto_message: proto::IdentityKeyStore = value.into();
-      encode_proto_message(proto_message)
+      let store: signal::InMemIdentityKeyStore = value.into();
+      store.into()
     }
   }
 
@@ -484,10 +487,12 @@ pub mod conversions {
 /// Implementations of [Persistent] which persist to the local filesystem.
 pub mod file_persistence {
   use super::conversions::{IdStore, PKStore, SKStore, SPKStore, SStore};
+  use super::proto;
   use super::{Persistent, Store, StoreError};
 
   use crate::error::{Error, ProtobufCodingFailure};
   use crate::identity::CryptographicIdentity;
+  use crate::serde::{self, *};
 
   use async_trait::async_trait;
   use libsignal_protocol::{self as signal, IdentityKeyStore};
@@ -563,7 +568,8 @@ pub mod file_persistence {
   #[async_trait]
   impl Persistent<PathBuf> for FileIdStore {
     async fn persist(&mut self) -> Result<(), Error> {
-      let bytes: Box<[u8]> = self.inner.clone().try_into()?;
+      let bytes: Box<[u8]> =
+        serde::Protobuf::<IdStore, proto::IdentityKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
@@ -571,7 +577,7 @@ pub mod file_persistence {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
-      let inner = IdStore::try_from(bytes.as_ref())?;
+      let inner = serde::Protobuf::<IdStore, proto::IdentityKeyStore>::deserialize(&bytes)?;
       Ok(Self {
         inner,
         path: record,
