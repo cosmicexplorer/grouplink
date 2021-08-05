@@ -8,6 +8,7 @@ use crate::message::MessageError;
 use crate::store::StoreError;
 
 use displaydoc::Display;
+use hex;
 use libsignal_protocol::SignalProtocolError;
 use prost;
 use thiserror::Error;
@@ -44,6 +45,8 @@ pub enum ProtobufCodingFailure {
   Encode(#[from] prost::EncodeError),
   /// a prost decoding error {0} was raised internally
   Decode(#[from] prost::DecodeError),
+  /// a hex coding error {0} was raised internally
+  Hex(#[from] hex::FromHexError),
 }
 
 /// Parent error type for this crate.

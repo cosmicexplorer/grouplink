@@ -561,6 +561,38 @@ mod serde_impl {
     }
   }
   pub use public_key::*;
+
+  mod fingerprints {
+    use crate::serde;
+    use libsignal_protocol as signal;
+
+    mod public_key {
+      use super::*;
+      impl From<signal::IdentityKey>
+        for serde::fingerprinting::FingerprintableBytes<signal::IdentityKey>
+      {
+        fn from(value: signal::IdentityKey) -> Self {
+          Self::new(value.serialize())
+        }
+      }
+      impl serde::fingerprinting::Fingerprintable for signal::IdentityKey {}
+    }
+    pub use public_key::*;
+
+    mod private_key {
+      use super::*;
+      impl From<signal::IdentityKeyPair>
+        for serde::fingerprinting::FingerprintableBytes<signal::IdentityKeyPair>
+      {
+        fn from(value: signal::IdentityKeyPair) -> Self {
+          Self::new(value.serialize())
+        }
+      }
+      impl serde::fingerprinting::Fingerprintable for signal::IdentityKeyPair {}
+    }
+    pub use private_key::*;
+  }
+  pub use fingerprints::*;
 }
 pub use serde_impl::*;
 

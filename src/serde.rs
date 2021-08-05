@@ -28,12 +28,59 @@ pub mod traits {
   pub trait Deserializer: SerdeViaBase {
     fn deserialize(
       data: &<Self::Fmt as SerializationFormat>::Read,
-    ) -> Result<<Self::Medium as Schema>::Source, Error>
-    where
-      Self: Sized;
+    ) -> Result<<Self::Medium as Schema>::Source, Error>;
   }
 
   pub trait SerdeVia: Serializer + Deserializer {}
+}
+
+pub mod fingerprinting {
+  use super::traits::Schema;
+
+  use hex;
+
+  use std::{convert::AsRef, marker::PhantomData};
+
+  #[derive(Debug, Clone)]
+  pub struct FingerprintableBytes<Source>(Box<[u8]>, PhantomData<Source>);
+
+  #[derive(Debug, Clone)]
+  pub struct HexFingerprint<Source>(String, PhantomData<Source>);
+
+  impl<Source> From<String> for HexFingerprint<Source> {
+    fn from(value: String) -> Self {
+      Self(value, PhantomData)
+    }
+  }
+  impl<Source> From<HexFingerprint<Source>> for String {
+    fn from(value: HexFingerprint<Source>) -> Self {
+      value.0
+    }
+  }
+  impl<Source> AsRef<str> for HexFingerprint<Source> {
+    fn as_ref(&self) -> &str {
+      self.0.as_ref()
+    }
+  }
+
+  impl<Source> FingerprintableBytes<Source> {
+    pub fn new(bytes: Box<[u8]>) -> Self {
+      Self(bytes, PhantomData)
+    }
+    pub fn from_hex_string(hex_string: &str) -> Result<Self, hex::FromHexError> {
+      let decoded: Vec<u8> = hex::decode(hex_string)?;
+      Ok(Self::new(decoded.into_boxed_slice()))
+    }
+    pub fn into_hex_string(self) -> HexFingerprint<Source> {
+      HexFingerprint::from(hex::encode(&self.0))
+    }
+  }
+
+  impl<Source> Schema for FingerprintableBytes<Source> {
+    type Source = Source;
+  }
+
+  pub trait Fingerprintable: Into<FingerprintableBytes<Self>> {}
 }
 
 pub use formats::protobuf::Protobuf;
@@ -43,41 +90,42 @@ pub mod formats {
   use std::marker::PhantomData;
 
   pub mod key_fingerprint {
-    use super::*;
+    use super::{super::fingerprinting::*, *};
 
     #[derive(Debug, Copy, Clone)]
-    pub struct KeyFingerprintFormat;
+    pub struct KeyFingerprintFormat<Source>(PhantomData<Source>);
 
-    impl SerializationFormat for KeyFingerprintFormat {
+    impl<Source> SerializationFormat for KeyFingerprintFormat<Source> {
       type Read = str;
-      type Written = String;
+      type Written = HexFingerprint<Source>;
     }
 
     #[derive(Debug, Copy, Clone)]
-    pub struct KeyFingerprint<Source, Proto>(pub Source, PhantomData<Proto>);
+    pub struct KeyFingerprint<Source>(Source);
 
-    impl<Source, Proto> KeyFingerprint<Source, Proto> {
+    impl<Source> KeyFingerprint<Source> {
       pub fn new(source: Source) -> Self {
-        Self(source, PhantomData)
+        Self(source)
       }
     }
 
-    impl<Proto> SerdeViaBase for KeyFingerprint<Proto::Source, Proto>
+    impl<Source> SerdeViaBase for KeyFingerprint<Source>
     where
-      Proto: Schema,
+      Source: Fingerprintable,
     {
-      type Fmt = KeyFingerprintFormat;
-      type Medium = Proto;
+      type Fmt = KeyFingerprintFormat<Source>;
+      type Medium = FingerprintableBytes<Source>;
     }
 
-    /* impl<Proto> Serializer for KeyFingerprint<Proto::Source, Proto> */
-    /* where */
-    /*   Proto: Schema, */
-    /* { */
-    /*   fn serialize(self) -> String { */
-    /*     let proto_message: Proto = self.0.into(); */
-    /*   } */
-    /* } */
+    impl<Source> Serializer for KeyFingerprint<Source>
+    where
+      Source: Fingerprintable,
+    {
+      fn serialize(self) -> HexFingerprint<Source> {
+        let proto_message: FingerprintableBytes<_> = self.0.into();
+        proto_message.into_hex_string()
+      }
+    }
   }
 
   pub mod protobuf {
@@ -126,10 +174,7 @@ pub mod formats {
     where
       Proto: Schema + prost::Message + TryInto<Proto::Source, Error = Error> + Default,
     {
-      fn deserialize(data: &[u8]) -> Result<Proto::Source, Error>
-      where
-        Self: Sized,
-      {
+      fn deserialize(data: &[u8]) -> Result<Proto::Source, Error> {
         let proto_message = Proto::decode(data)?;
         proto_message.try_into()
       }

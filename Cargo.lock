@@ -520,6 +520,7 @@ dependencies = [
  "color-eyre",
  "displaydoc",
  "futures",
+ "hex 0.3.2",
  "libc",
  "libsignal-protocol",
  "parking_lot",
@@ -564,6 +565,12 @@ checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "hex"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "805026a5d0141ffc30abb3be3173848ad46a1b1664fe632428479619a3644d77"
 
 [[package]]
 name = "hex"
@@ -638,7 +645,7 @@ dependencies = [
  "block-modes",
  "ctr",
  "curve25519-dalek 3.0.0",
- "hex",
+ "hex 0.4.3",
  "hmac",
  "log",
  "num_enum",
