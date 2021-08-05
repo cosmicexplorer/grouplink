@@ -35,7 +35,12 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
-use grouplink;
+use grouplink::{
+  identity::{proto as id_proto, Identity, Spontaneous},
+  rand,
+  serde::{self, *},
+  signal::{IdentityKey, IdentityKeyPair},
+};
 
 use clap::{App, Arg, ArgGroup, SubCommand};
 use dirs;
@@ -256,10 +261,23 @@ fn main() {
   match matches.subcommand() {
     /* key */
     ("key", Some(matches)) => {
-      let key_input = input_stream(matches.value_of_os("key-input"));
-      let output = output_stream(matches.value_of_os("output"));
+      let mut key_input = input_stream(matches.value_of_os("key-input"));
+      let mut key_output = output_stream(matches.value_of_os("output"));
       match matches.subcommand() {
-        ("fingerprint", _) => todo!(),
+        ("fingerprint", _) => {
+          let mut key_bytes: Vec<u8> = Vec::new();
+          key_input
+            .read_to_end(&mut key_bytes)
+            .expect("failed to read key");
+          /* FIXME: remove this .expect()! */
+          let identity = serde::Protobuf::<Identity, id_proto::PrivateKey>::deserialize(&key_bytes)
+            .expect("failed to read key file");
+          let key_fingerprint =
+            serde::KeyFingerprint::<IdentityKeyPair>::new(identity.crypto.inner);
+          let hex_fingerprint = key_fingerprint.serialize();
+          let hex_fingerprint: String = hex_fingerprint.into();
+          println!("{}", &hex_fingerprint);
+        }
         ("public", Some(matches)) => match matches.subcommand_name() {
           Some("fingerprint") => todo!(),
           None => todo!(),
@@ -267,7 +285,13 @@ fn main() {
         },
         ("create", Some(matches)) => {
           let interactive = matches.is_present("interactive");
-          todo!()
+          let new_id = Identity::generate((), &mut rand::thread_rng());
+          let protobuf_id = serde::Protobuf::<Identity, id_proto::PrivateKey>::new(new_id);
+          let protobuf_id_serialized: Box<[u8]> = protobuf_id.serialize();
+          key_output
+            .write_all(&protobuf_id_serialized)
+            .expect("failed to write key");
+          eprintln!("wrote key ??? to '{}'", "???");
         }
         _ => unreachable!(),
       }

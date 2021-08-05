@@ -196,3 +196,6 @@ pub use store::{
   },
   Persistent, Store,
 };
+
+pub use libsignal_protocol as signal;
+pub use rand;

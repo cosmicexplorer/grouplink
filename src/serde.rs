@@ -83,7 +83,7 @@ pub mod fingerprinting {
   pub trait Fingerprintable: Into<FingerprintableBytes<Self>> {}
 }
 
-pub use formats::protobuf::Protobuf;
+pub use formats::{key_fingerprint::KeyFingerprint, protobuf::Protobuf};
 pub mod formats {
   use super::traits::*;
 
