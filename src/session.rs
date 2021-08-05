@@ -24,13 +24,11 @@ use crate::serde::{self, *};
 use crate::store::{Persistent, Store};
 
 use libsignal_protocol as signal;
-use prost::Message;
 use rand::{self, CryptoRng, Rng};
 
 #[cfg(doc)]
 use libsignal_protocol::{PreKeyStore, SignedPreKeyStore};
 
-use std::convert::{TryFrom, TryInto};
 use std::time::SystemTime;
 
 /// Specify the parameters to create a new [SignedPreKey].

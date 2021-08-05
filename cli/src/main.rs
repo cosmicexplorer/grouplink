@@ -39,7 +39,7 @@ use grouplink::{
   identity::{proto as id_proto, Identity, Spontaneous},
   rand,
   serde::{self, *},
-  signal::{IdentityKey, IdentityKeyPair},
+  signal::IdentityKeyPair,
 };
 
 use clap::{App, Arg, ArgGroup, SubCommand};

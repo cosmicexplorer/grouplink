@@ -94,10 +94,8 @@ pub mod conversions {
   use crate::error::{Error, ProtobufCodingFailure};
   use crate::identity::ExternalIdentity;
   use crate::serde;
-  use crate::util::encode_proto_message;
 
   use libsignal_protocol as signal;
-  use prost::Message;
   use uuid::Uuid;
 
   use std::borrow::Cow;
@@ -530,7 +528,6 @@ pub mod file_persistence {
   use libsignal_protocol::{self as signal, IdentityKeyStore};
   use uuid::Uuid;
 
-  use std::convert::{TryFrom, TryInto};
   use std::default::Default;
   use std::fs;
   use std::marker::PhantomData;

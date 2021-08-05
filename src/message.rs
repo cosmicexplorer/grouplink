@@ -18,15 +18,11 @@ pub mod proto {
   pub use proto::*;
 }
 
-use crate::error::{Error, ProtobufCodingFailure};
+use crate::error::ProtobufCodingFailure;
 use crate::session::{PreKeyBundle, SealedSenderMessage};
-use crate::util::encode_proto_message;
 
 use displaydoc::Display;
-use prost::Message as _;
 use thiserror::Error;
-
-use std::convert::{TryFrom, TryInto};
 
 /// Types of errors that can occur while processing an incoming [Message].
 #[derive(Debug, Error, Display)]
@@ -74,7 +70,7 @@ impl Message {
 mod serde_impl {
   use super::*;
   use crate::{error::Error, serde};
-  use std::convert::{AsRef, TryFrom, TryInto};
+  use std::convert::{TryFrom, TryInto};
 
   mod message {
     use super::*;

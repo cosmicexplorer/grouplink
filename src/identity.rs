@@ -12,11 +12,9 @@ pub mod proto {
 }
 
 use crate::error::{Error, ProtobufCodingFailure};
-use crate::util::encode_proto_message;
 
 use displaydoc::Display;
 use libsignal_protocol as signal;
-use prost::Message as _;
 use rand::{self, CryptoRng, Rng};
 use thiserror::Error;
 use uuid::Uuid;
@@ -25,7 +23,6 @@ use uuid::Uuid;
 use libsignal_protocol::{IdentityKeyStore, ProtocolAddress};
 
 use std::{
-  convert::{From, TryFrom, TryInto},
   default, fmt,
   time::{Duration, SystemTime, SystemTimeError},
 };
