@@ -35,6 +35,11 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
+pub mod commands;
+pub mod error;
+pub mod generate_key;
+pub mod key_info;
+
 use grouplink::{
   identity::{proto as id_proto, Identity, Spontaneous},
   rand,
@@ -73,14 +78,14 @@ fn main() {
             .help("If not provided, or if the value is the string '-', write to stdout.")
             .takes_value(true),
         )
-        .subcommand(
-          SubCommand::with_name("fingerprint").about("Extract a fingerprint from a private key."),
+        .arg(
+          Arg::with_name("public-key")
+            .short("b")
+            .long("public-key")
+            .help("Assume the --key-input is a public key, and error if it is a private key.")
         )
         .subcommand(
-          SubCommand::with_name("public").about("Extract a public key from a private key.")
-            .subcommand(
-              SubCommand::with_name("fingerprint").about("Extract a fingerprint from a public key.")
-            ),
+          SubCommand::with_name("fingerprint").about("Extract a fingerprint from a key."),
         )
         .subcommand(
           SubCommand::with_name("create").about("Create a new private key.")

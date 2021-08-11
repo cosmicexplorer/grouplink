@@ -1,0 +1,10 @@
+use grouplink::error::Error as LibraryError;
+
+use displaydoc::Display;
+use thiserror::Error;
+
+#[derive(Debug, Display, Error)]
+pub enum Error {
+  /// key info error: {0}
+  KeyInfo(#[from] crate::key_info::Error),
+}

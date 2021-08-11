@@ -10,3 +10,5 @@ edition = "2018"
 clap = "2"
 dirs = "3"
 grouplink = { path = "../" }
+thiserror = "1.0.24"
+displaydoc = "0.2"

@@ -196,9 +196,28 @@ impl fmt::Display for Identity {
 }
 
 #[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct PublicCryptoIdentity(pub signal::IdentityKey);
+
+impl From<CryptographicIdentity> for PublicCryptoIdentity {
+  fn from(value: CryptographicIdentity) -> Self {
+    Self(*value.inner.identity_key())
+  }
+}
+
+#[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct PublicIdentity {
-  pub public_key: signal::IdentityKey,
+  pub public_key: PublicCryptoIdentity,
   pub external: ExternalIdentity,
+}
+
+impl From<Identity> for PublicIdentity {
+  fn from(value: Identity) -> Self {
+    let Identity { crypto, external } = value;
+    Self {
+      public_key: crypto.into(),
+      external,
+    }
+  }
 }
 
 /// An extension of [ExternalIdentity] which differentiates between different clients representing
@@ -542,7 +561,7 @@ mod serde_impl {
           })?
           .try_into()?;
         Ok(Self {
-          public_key,
+          public_key: PublicCryptoIdentity(public_key),
           external,
         })
       }
@@ -551,7 +570,7 @@ mod serde_impl {
     impl From<PublicIdentity> for proto::PublicKey {
       fn from(value: PublicIdentity) -> Self {
         proto::PublicKey {
-          public_key: Some(value.public_key.serialize().into_vec()),
+          public_key: Some(value.public_key.0.serialize().into_vec()),
           external: Some(value.external.into()),
         }
       }
