@@ -48,20 +48,20 @@ where
   KeyType: KeyVariant,
 {
   type OutType;
-  fn execute(identity: KeyType) -> Self::OutType;
+  fn execute(self, identity: KeyType) -> Self::OutType;
 }
 
 pub struct ExtractFingerprint;
 
 impl KeyInfoOperation<identity::Identity> for ExtractFingerprint {
   type OutType = serde::KeyFingerprint<signal::IdentityKeyPair>;
-  fn execute(identity: identity::Identity) -> Self::OutType {
+  fn execute(self, identity: identity::Identity) -> Self::OutType {
     serde::KeyFingerprint::<signal::IdentityKeyPair>::new(identity.crypto.inner)
   }
 }
 impl KeyInfoOperation<identity::PublicIdentity> for ExtractFingerprint {
   type OutType = serde::KeyFingerprint<signal::IdentityKey>;
-  fn execute(identity: identity::PublicIdentity) -> Self::OutType {
+  fn execute(self, identity: identity::PublicIdentity) -> Self::OutType {
     serde::KeyFingerprint::<signal::IdentityKey>::new(identity.public_key.0)
   }
 }
@@ -70,12 +70,12 @@ pub struct ExtractPublicKey;
 
 impl KeyInfoOperation<identity::Identity> for ExtractPublicKey {
   type OutType = identity::PublicIdentity;
-  fn execute(identity: identity::Identity) -> Self::OutType {
+  fn execute(self, identity: identity::Identity) -> Self::OutType {
     identity.into()
   }
 }
 
-pub struct Key<T>(pub T);
+pub struct Key<T>(T);
 
 impl<T> Key<T>
 where
@@ -89,6 +89,6 @@ where
   where
     O: KeyInfoOperation<T>,
   {
-    O::execute(self.0)
+    op.execute(self.0)
   }
 }

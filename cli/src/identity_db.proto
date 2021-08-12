@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+/* Copyright 2021 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+package grouplink.cli.proto.identity_db;
+
+message PublicIdentityDb {
+  map<string, bytes> known_public_keys = 1;
+}
+
+message PrivateIdentityDb {
+  map<string, bytes> known_private_keys = 1;
+}

@@ -36,10 +36,11 @@ use std::path::PathBuf;
 /// invalid states.
 #[async_trait]
 pub trait Persistent<Record> {
+  type Error;
   /// Write this object to some external location like a hard disk.
-  async fn persist(&mut self) -> Result<(), Error>;
+  async fn persist(&mut self) -> Result<(), Self::Error>;
   /// Read this type from the location `record`.
-  async fn extract(record: Record) -> Result<Self, Error>
+  async fn extract(record: Record) -> Result<Self, Self::Error>
   where
     Self: Sized;
 }
@@ -542,13 +543,6 @@ pub mod file_persistence {
     pub path: PathBuf,
   }
 
-  impl FileIdStore {
-    #[allow(missing_docs)]
-    pub fn new(inner: IdStore, path: PathBuf) -> Self {
-      Self { inner, path }
-    }
-  }
-
   /* Forwards to inner. */
   #[async_trait(?Send)]
   impl signal::IdentityKeyStore for FileIdStore {
@@ -596,13 +590,14 @@ pub mod file_persistence {
 
   #[async_trait]
   impl Persistent<PathBuf> for FileIdStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       let bytes: Box<[u8]> =
         serde::Protobuf::<IdStore, proto::IdentityKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
-    async fn extract(record: PathBuf) -> Result<Self, Error> {
+    async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
@@ -659,13 +654,14 @@ pub mod file_persistence {
 
   #[async_trait]
   impl Persistent<PathBuf> for FilePreKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       let bytes: Box<[u8]> =
         serde::Protobuf::<PKStore, proto::PreKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
-    async fn extract(record: PathBuf) -> Result<Self, Error> {
+    async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
@@ -719,13 +715,14 @@ pub mod file_persistence {
 
   #[async_trait]
   impl Persistent<PathBuf> for FileSignedPreKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       let bytes: Box<[u8]> =
         serde::Protobuf::<SPKStore, proto::SignedPreKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
-    async fn extract(record: PathBuf) -> Result<Self, Error> {
+    async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
@@ -775,13 +772,14 @@ pub mod file_persistence {
 
   #[async_trait]
   impl Persistent<PathBuf> for FileSessionStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       let bytes: Box<[u8]> =
         serde::Protobuf::<SStore, proto::SessionStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
-    async fn extract(record: PathBuf) -> Result<Self, Error> {
+    async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
@@ -841,13 +839,14 @@ pub mod file_persistence {
 
   #[async_trait]
   impl Persistent<PathBuf> for FileSenderKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       let bytes: Box<[u8]> =
         serde::Protobuf::<SKStore, proto::SenderKeyStore>::new(self.inner.clone()).serialize();
       fs::write(&self.path, bytes)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
-    async fn extract(record: PathBuf) -> Result<Self, Error> {
+    async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
       let bytes: Box<[u8]> = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?
         .into_boxed_slice();
@@ -915,12 +914,16 @@ pub mod file_persistence {
       &self,
       path: PathBuf,
       make_default: F,
-    ) -> Result<P, Error> {
+    ) -> Result<P, Error>
+    where
+      P::Error: Into<Error>,
+      Error: From<P::Error>,
+    {
       let mut result = if self.should_try_extract() {
         match P::extract(path).await {
           Ok(store) => store,
           Err(e) if self.should_propagate_error() => {
-            return Err(e);
+            return Err(e.into());
           }
           _ => make_default(),
         }
@@ -1081,10 +1084,11 @@ pub mod in_memory_store {
 
   #[async_trait]
   impl Persistent<()> for signal::InMemIdentityKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       Ok(())
     }
-    async fn extract(_record: ()) -> Result<Self, Error>
+    async fn extract(_record: ()) -> Result<Self, Self::Error>
     where
       Self: Sized,
     {
@@ -1094,10 +1098,11 @@ pub mod in_memory_store {
 
   #[async_trait]
   impl Persistent<()> for signal::InMemSessionStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       Ok(())
     }
-    async fn extract(_record: ()) -> Result<Self, Error>
+    async fn extract(_record: ()) -> Result<Self, Self::Error>
     where
       Self: Sized,
     {
@@ -1107,10 +1112,11 @@ pub mod in_memory_store {
 
   #[async_trait]
   impl Persistent<()> for signal::InMemPreKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       Ok(())
     }
-    async fn extract(_record: ()) -> Result<Self, Error>
+    async fn extract(_record: ()) -> Result<Self, Self::Error>
     where
       Self: Sized,
     {
@@ -1120,10 +1126,11 @@ pub mod in_memory_store {
 
   #[async_trait]
   impl Persistent<()> for signal::InMemSignedPreKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       Ok(())
     }
-    async fn extract(_record: ()) -> Result<Self, Error>
+    async fn extract(_record: ()) -> Result<Self, Self::Error>
     where
       Self: Sized,
     {
@@ -1133,10 +1140,11 @@ pub mod in_memory_store {
 
   #[async_trait]
   impl Persistent<()> for signal::InMemSenderKeyStore {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       Ok(())
     }
-    async fn extract(_record: ()) -> Result<Self, Error>
+    async fn extract(_record: ()) -> Result<Self, Self::Error>
     where
       Self: Sized,
     {
@@ -1228,11 +1236,12 @@ pub mod test {
 
   #[async_trait]
   impl Persistent<PathBuf> for BytesPersister {
-    async fn persist(&mut self) -> Result<(), Error> {
+    type Error = Error;
+    async fn persist(&mut self) -> Result<(), Self::Error> {
       fs::write(&self.0, &self.1)
         .map_err(|e| Error::ProtobufEncodingError(ProtobufCodingFailure::Io(e)))
     }
-    async fn extract(record: PathBuf) -> Result<Self, Error> {
+    async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
       let bytes = fs::read(&record)
         .map_err(|e| Error::ProtobufDecodingError(ProtobufCodingFailure::Io(e)))?;
       Ok(Self(record, bytes))

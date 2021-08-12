@@ -26,9 +26,10 @@ pub mod traits {
   }
 
   pub trait Deserializer: SerdeViaBase {
+    type Error;
     fn deserialize(
       data: &<Self::Fmt as SerializationFormat>::Read,
-    ) -> Result<<Self::Medium as Schema>::Source, Error>;
+    ) -> Result<<Self::Medium as Schema>::Source, Self::Error>;
   }
 
   pub trait SerdeVia: Serializer + Deserializer {}
@@ -41,10 +42,10 @@ pub mod fingerprinting {
 
   use std::{convert::AsRef, marker::PhantomData};
 
-  #[derive(Debug, Clone)]
+  #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
   pub struct FingerprintableBytes<Source>(Box<[u8]>, PhantomData<Source>);
 
-  #[derive(Debug, Clone)]
+  #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
   pub struct HexFingerprint<Source>(String, PhantomData<Source>);
 
   impl<Source> From<String> for HexFingerprint<Source> {
@@ -100,7 +101,7 @@ pub mod formats {
       type Written = HexFingerprint<Source>;
     }
 
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
     pub struct KeyFingerprint<Source>(Source);
 
     impl<Source> KeyFingerprint<Source> {
@@ -170,22 +171,23 @@ pub mod formats {
       }
     }
 
-    impl<Proto> Deserializer for Protobuf<Proto::Source, Proto>
+    impl<Proto, E> Deserializer for Protobuf<Proto::Source, Proto>
     where
-      Proto: Schema + prost::Message + TryInto<Proto::Source, Error = Error> + Default,
+      E: From<prost::DecodeError>,
+      Proto: Schema + prost::Message + TryInto<Proto::Source, Error = E> + Default,
     {
-      fn deserialize(data: &[u8]) -> Result<Proto::Source, Error> {
+      type Error = E;
+      fn deserialize(data: &[u8]) -> Result<Proto::Source, Self::Error> {
         let proto_message = Proto::decode(data)?;
         proto_message.try_into()
       }
     }
 
-    impl<Proto> SerdeVia for Protobuf<Proto::Source, Proto> where
-      Proto: Schema
-        + prost::Message
-        + From<Proto::Source>
-        + TryInto<Proto::Source, Error = Error>
-        + Default
+    impl<Proto, E> SerdeVia for Protobuf<Proto::Source, Proto>
+    where
+      E: From<prost::DecodeError>,
+      Proto:
+        Schema + prost::Message + From<Proto::Source> + TryInto<Proto::Source, Error = E> + Default,
     {
     }
   }

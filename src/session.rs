@@ -88,7 +88,10 @@ impl SignedPreKey {
     id_store: &mut ID,
     signed_prekey_store: &mut SPK,
     csprng: &mut R,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<ID as Persistent<Record>>::Error> + From<<SPK as Persistent<Record>>::Error>,
+  {
     let SignedPreKeyRequest { id, pair } = params;
 
     let pub_signed_prekey: Box<[u8]> = pair.public_key().serialize();
@@ -156,7 +159,13 @@ pub async fn generate_signed_pre_key<
   Sender: signal::SenderKeyStore + Persistent<Record>,
 >(
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<SignedPreKey, Error> {
+) -> Result<SignedPreKey, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>,
+{
   let req = SignedPreKeyRequest::generate((), &mut rand::thread_rng());
   SignedPreKey::intern(
     req,
@@ -206,7 +215,10 @@ impl OneTimePreKey {
   pub async fn intern<Record, PK: signal::PreKeyStore + Persistent<Record>>(
     params: OneTimePreKeyRequest,
     store: &mut PK,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<PK as Persistent<Record>>::Error>,
+  {
     let OneTimePreKeyRequest { id, pair } = params;
     let inner = signal::PreKeyRecord::new(id.into(), &pair.into());
     store.save_pre_key(id.into(), &inner, None).await?;
@@ -256,7 +268,13 @@ pub async fn generate_one_time_pre_key<
   Sender: signal::SenderKeyStore + Persistent<Record>,
 >(
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<OneTimePreKey, Error> {
+) -> Result<OneTimePreKey, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>,
+{
   let req = OneTimePreKeyRequest::generate((), &mut rand::thread_rng());
   OneTimePreKey::intern(req, &mut store.pre_key_store).await
 }
@@ -369,7 +387,10 @@ impl PreKeyBundle {
     session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
-  ) -> Result<(), Error> {
+  ) -> Result<(), Error>
+  where
+    Error: From<<S as Persistent<Record>>::Error> + From<<ID as Persistent<Record>>::Error>,
+  {
     signal::process_prekey_bundle(
       &self.destination.into(),
       session_store,
@@ -534,7 +555,10 @@ impl SealedSenderMessage {
     request: SealedSenderPreKeyBundleRequest,
     id_store: &mut ID,
     csprng: &mut R,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<ID as Persistent<Record>>::Error>,
+  {
     let SealedSenderPreKeyBundleRequest {
       bundle,
       sender_cert: SenderCert {
@@ -583,7 +607,10 @@ impl SealedSenderMessage {
     session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<S as Persistent<Record>>::Error> + From<<ID as Persistent<Record>>::Error>,
+  {
     let SealedSenderMessageRequest {
       bundle,
       sender_cert,
@@ -621,7 +648,10 @@ impl SealedSenderMessage {
     session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<S as Persistent<Record>>::Error> + From<<ID as Persistent<Record>>::Error>,
+  {
     let SealedSenderFollowupMessageRequest {
       target: destination,
       sender_cert: SenderCert {
@@ -666,7 +696,13 @@ pub async fn encrypt_pre_key_bundle_message<
 >(
   req: SealedSenderPreKeyBundleRequest,
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<SealedSenderMessage, Error> {
+) -> Result<SealedSenderMessage, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>,
+{
   SealedSenderMessage::intern_pre_key_bundle::<Record, ID, _>(
     req,
     &mut store.identity_store,
@@ -747,7 +783,13 @@ pub async fn encrypt_initial_message<
 >(
   req: SealedSenderMessageRequest<'_>,
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<SealedSenderMessage, Error> {
+) -> Result<SealedSenderMessage, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>,
+{
   SealedSenderMessage::intern(
     req,
     &mut store.session_store,
@@ -854,7 +896,13 @@ pub async fn encrypt_followup_message<
 >(
   req: SealedSenderFollowupMessageRequest<'_>,
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<SealedSenderMessage, Error> {
+) -> Result<SealedSenderMessage, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>,
+{
   SealedSenderMessage::intern_followup(
     req,
     &mut store.session_store,
@@ -896,7 +944,13 @@ impl SealedSenderMessageResult {
     session_store: &mut S,
     pre_key_store: &mut PK,
     signed_pre_key_store: &mut SPK,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<ID as Persistent<Record>>::Error>
+      + From<<S as Persistent<Record>>::Error>
+      + From<<PK as Persistent<Record>>::Error>
+      + From<<SPK as Persistent<Record>>::Error>,
+  {
     let SealedSenderDecryptionRequest {
       inner: SealedSenderMessage {
         trust_root,
@@ -966,7 +1020,13 @@ impl SealedSenderMessageResult {
     session_store: &mut S,
     pre_key_store: &mut PK,
     signed_pre_key_store: &mut SPK,
-  ) -> Result<Self, Error> {
+  ) -> Result<Self, Error>
+  where
+    Error: From<<ID as Persistent<Record>>::Error>
+      + From<<S as Persistent<Record>>::Error>
+      + From<<PK as Persistent<Record>>::Error>
+      + From<<SPK as Persistent<Record>>::Error>,
+  {
     let SealedSenderDecryptionRequest {
       inner: SealedSenderMessage {
         trust_root,
@@ -1031,7 +1091,14 @@ pub async fn decrypt_pre_key_message<
 >(
   req: SealedSenderDecryptionRequest,
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<SealedSenderMessageResult, Error> {
+) -> Result<SealedSenderMessageResult, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>
+    + From<<Sender as Persistent<Record>>::Error>,
+{
   SealedSenderMessageResult::intern_pre_key_bundle(
     req,
     &mut store.identity_store,
@@ -1126,7 +1193,13 @@ pub async fn decrypt_message<
 >(
   req: SealedSenderDecryptionRequest,
   store: &mut Store<Record, S, PK, SPK, ID, Sender>,
-) -> Result<SealedSenderMessageResult, Error> {
+) -> Result<SealedSenderMessageResult, Error>
+where
+  Error: From<<S as Persistent<Record>>::Error>
+    + From<<PK as Persistent<Record>>::Error>
+    + From<<SPK as Persistent<Record>>::Error>
+    + From<<ID as Persistent<Record>>::Error>,
+{
   SealedSenderMessageResult::intern(
     req,
     &mut store.identity_store,

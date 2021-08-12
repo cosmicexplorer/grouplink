@@ -38,6 +38,7 @@
 pub mod commands;
 pub mod error;
 pub mod generate_key;
+pub mod identity_db;
 pub mod key_info;
 
 use grouplink::{

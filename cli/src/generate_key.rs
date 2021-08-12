@@ -5,6 +5,9 @@ use grouplink::{
 
 pub struct KeyGenerationOptions;
 
-pub fn generate_private_key(_options: KeyGenerationOptions) -> identity::Identity {
-  identity::Identity::generate((), &mut rand::thread_rng())
+pub fn generate_private_key<R>(_options: KeyGenerationOptions, rng: &mut R) -> identity::Identity
+where
+  R: rand::Rng + rand::CryptoRng,
+{
+  identity::Identity::generate((), rng)
 }
