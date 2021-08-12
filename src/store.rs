@@ -72,6 +72,20 @@ pub struct Store<
   pub _record: PhantomData<Record>,
 }
 
+impl<
+    Record,
+    S: signal::SessionStore + Persistent<Record>,
+    PK: signal::PreKeyStore + Persistent<Record>,
+    SPK: signal::SignedPreKeyStore + Persistent<Record>,
+    ID: signal::IdentityKeyStore + Persistent<Record>,
+    Sender: signal::SenderKeyStore + Persistent<Record>,
+  > Store<Record, S, PK, SPK, ID, Sender>
+{
+  pub async fn owning_identity(&self) -> Result<signal::IdentityKeyPair, Error> {
+    Ok(self.identity_store.get_identity_key_pair(None).await?)
+  }
+}
+
 #[cfg(test)]
 pub type StoreWrapper<Record, S, PK, SPK, ID, Sender> =
   std::sync::Arc<parking_lot::RwLock<Store<Record, S, PK, SPK, ID, Sender>>>;

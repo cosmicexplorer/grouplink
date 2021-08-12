@@ -40,6 +40,7 @@ pub mod error;
 pub mod generate_key;
 pub mod identity_db;
 pub mod key_info;
+pub mod sessions;
 
 use grouplink::{
   identity::{proto as id_proto, Identity, Spontaneous},
