@@ -4,12 +4,7 @@
 use prost_build;
 
 fn main() {
-  let protos = [
-    "src/identity.proto",
-    "src/message.proto",
-    "src/session.proto",
-    "src/store.proto",
-  ];
+  let protos = ["src/identity_db.proto"];
   prost_build::compile_protos(&protos, &["src"]).expect("protobufs were somehow invalid?");
   for proto in &protos {
     println!("cargo:rerun-if-changed={}", proto);

@@ -1,0 +1,28 @@
+[package]
+name = "grouplink-low-level"
+version = "0.1.0"
+authors = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
+edition = "2018"
+license = "AGPL-3.0-only"
+
+[dependencies]
+async-trait = "0.1.51"
+libc = "0.2.94"
+libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "6b667286f801b12855c42ffadb7377922b4fc1b5" }
+rand = "0.7"
+prost = "0.7"
+bytes = "1"
+uuid = "0.8"
+thiserror = "1.0.24"
+displaydoc = "0.2"
+parking_lot = "0.11.1"
+hex = "0.3.1"
+
+[build-dependencies]
+prost-build = "0.7"
+
+[dev-dependencies]
+futures = "0.3.7"
+proptest = "1.0.0"
+color-eyre = "0.5"
+tempdir = "0.3.7"

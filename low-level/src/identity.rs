@@ -175,8 +175,8 @@ impl Spontaneous<()> for Identity {
 ///
 /// This identity is "anonymous" as it has no relationship to any other identity ever produced:
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::identity::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::identity::*;
 ///
 /// // Create a new identity.
 /// let id = generate_identity();
@@ -260,8 +260,8 @@ impl Spontaneous<ExternalIdentity> for SealedSenderIdentity {
 ///
 /// Consumed by [generate_sender_cert]. Mix and match with [generate_identity] as needed:
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::identity::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::identity::*;
 ///
 /// // Create a new identity.
 /// let alice = generate_identity();
@@ -359,8 +359,8 @@ impl default::Default for SenderCertTTL {
 ///
 /// Consumes the result of [generate_sealed_sender_identity] and [generate_identity]:
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::identity::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::identity::*;
 ///
 /// // Create a new identity.
 /// let alice = generate_identity();

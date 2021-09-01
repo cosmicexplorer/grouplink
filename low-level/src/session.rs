@@ -121,8 +121,8 @@ impl SignedPreKey {
 /// Create a new signed pre-key from random bits as per the [X3DH] key agreement protocol.
 ///
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::*;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
@@ -230,8 +230,8 @@ impl OneTimePreKey {
 /// Create a new one-time pre-key from random bits as per the [X3DH] key agreement protocol.
 ///
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::*;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
@@ -412,8 +412,8 @@ impl PreKeyBundle {
 /// The prerequisite keys can be generated with [generate_signed_pre_key] and
 /// [generate_one_time_pre_key]:
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::*;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
 /// # use tempdir::TempDir;
@@ -715,8 +715,8 @@ where
 /// a new message chain.**
 ///
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::*;
 /// # use futures::executor::block_on;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
@@ -804,8 +804,8 @@ where
 /// An *existing* message chain can be initialized by calling [encrypt_initial_message] and then
 /// [decrypt_message]:
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::*;
 /// # use futures::executor::block_on;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;
@@ -1114,8 +1114,8 @@ where
 /// An *existing* message chain can be initialized by calling [encrypt_initial_message] or
 /// [encrypt_followup_message]:
 ///```
-/// # fn main() -> Result<(), grouplink::error::Error> {
-/// use grouplink::*;
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::*;
 /// # use futures::executor::block_on;
 /// use std::path::PathBuf;
 /// # use std::env::set_current_dir;

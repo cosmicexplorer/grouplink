@@ -16,15 +16,15 @@ pub enum Error {
   /// the sealed sender client with id {0:?} for external identity {1} does not match identity {2}
   SealedSenderClientDoesNotMatch(
     operations::stores::SealedSenderId,
-    grouplink::identity::ExternalIdentity,
-    grouplink::identity::Identity,
+    grouplink_low_level::identity::ExternalIdentity,
+    grouplink_low_level::identity::Identity,
   ),
   /// a grouplink error was received: {0}
-  LibraryError(#[from] grouplink::error::Error),
+  LibraryError(#[from] grouplink_low_level::error::Error),
 }
 
-impl From<grouplink::signal::SignalProtocolError> for Error {
-  fn from(value: grouplink::signal::SignalProtocolError) -> Self {
+impl From<grouplink_low_level::signal::SignalProtocolError> for Error {
+  fn from(value: grouplink_low_level::signal::SignalProtocolError) -> Self {
     Self::LibraryError(value.into())
   }
 }
@@ -44,7 +44,7 @@ pub mod traits {
 pub mod operations {
   use super::{traits::SignalSessionOperation, Error};
 
-  use grouplink::{
+  use grouplink_low_level::{
     identity, message, session,
     signal::{self, IdentityKeyStore},
     store::{
@@ -151,12 +151,11 @@ pub mod operations {
           };
           match initialize_file_backed_store(req).await {
             Ok(store) => stores.push(store),
-            Err(grouplink::error::Error::Store(store::StoreError::NonMatchingStoreIdentity(
-              _,
-              _,
-            ))) => (),
+            Err(grouplink_low_level::error::Error::Store(
+              store::StoreError::NonMatchingStoreIdentity(_, _),
+            )) => (),
             Err(e) => {
-              let e: grouplink::error::Error = e.into();
+              let e: grouplink_low_level::error::Error = e.into();
               return Err(Error::LibraryError(e));
             }
           }
@@ -322,7 +321,7 @@ pub mod operations {
       type OutType = identity::SealedSenderIdentity;
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
-        use grouplink::serde::{Protobuf, Serializer};
+        use grouplink_low_level::serde::{Protobuf, Serializer};
         use identity::{proto as id_proto, *};
         use io::Write;
 
@@ -368,7 +367,7 @@ pub mod operations {
       type OutType = Vec<identity::SealedSenderIdentity>;
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
-        use grouplink::serde::{Deserializer, Protobuf};
+        use grouplink_low_level::serde::{Deserializer, Protobuf};
         use identity::{proto as id_proto, *};
         use io::Read;
 
@@ -407,7 +406,7 @@ pub mod operations {
       type OutType = identity::SealedSenderIdentity;
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
-        use grouplink::serde::{Deserializer, Protobuf};
+        use grouplink_low_level::serde::{Deserializer, Protobuf};
         use identity::{proto as id_proto, *};
         use io::Read;
 
@@ -593,7 +592,7 @@ pub mod operations {
       type OutType = session::PreKeyBundle;
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
-        use grouplink::serde::{Deserializer, Protobuf};
+        use grouplink_low_level::serde::{Deserializer, Protobuf};
 
         let Self {
           sealed_sender_identity,

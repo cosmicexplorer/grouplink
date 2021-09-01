@@ -1,4 +1,4 @@
-use grouplink::{
+use grouplink_low_level::{
   error::Error as LibraryError,
   identity,
   serde::{self, *},

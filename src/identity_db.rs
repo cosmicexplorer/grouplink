@@ -20,12 +20,12 @@ pub enum Error {
   /// key with fingerprint {0} does not exist in the identity database
   KeyDoesNotExist(String),
   /// internal error from grouplink: {0}
-  LibraryError(#[from] grouplink::error::Error),
+  LibraryError(#[from] grouplink_low_level::error::Error),
 }
 
 impl From<prost::DecodeError> for Error {
   fn from(value: prost::DecodeError) -> Self {
-    let e: grouplink::error::Error = value.into();
+    let e: grouplink_low_level::error::Error = value.into();
     e.into()
   }
 }
@@ -50,7 +50,7 @@ pub mod traits {
 pub mod stores {
   use super::{proto, Error};
 
-  use grouplink::{
+  use grouplink_low_level::{
     identity::{self, proto as id_proto},
     serde::{self, fingerprinting::HexFingerprint, *},
     signal,
@@ -235,7 +235,7 @@ pub mod stores {
   pub mod file_persistence {
     use super::{super::Error, *};
 
-    use grouplink::{self, serde, store::Persistent};
+    use grouplink_low_level::{self, serde, store::Persistent};
 
     use async_trait::async_trait;
 
@@ -272,8 +272,8 @@ pub mod stores {
           serde::Protobuf::<PublicIdStore, proto::PublicIdentityDb>::new(self.inner.clone())
             .serialize();
         fs::write(&self.path, bytes).map_err(|e| {
-          grouplink::error::Error::ProtobufEncodingError(
-            grouplink::error::ProtobufCodingFailure::Io(e),
+          grouplink_low_level::error::Error::ProtobufEncodingError(
+            grouplink_low_level::error::ProtobufCodingFailure::Io(e),
           )
         })?;
         Ok(())
@@ -281,8 +281,8 @@ pub mod stores {
       async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
         let bytes: Box<[u8]> = fs::read(&record)
           .map_err(|e| {
-            grouplink::error::Error::ProtobufDecodingError(
-              grouplink::error::ProtobufCodingFailure::Io(e),
+            grouplink_low_level::error::Error::ProtobufDecodingError(
+              grouplink_low_level::error::ProtobufCodingFailure::Io(e),
             )
           })?
           .into_boxed_slice();
@@ -325,8 +325,8 @@ pub mod stores {
           serde::Protobuf::<PrivateIdStore, proto::PrivateIdentityDb>::new(self.inner.clone())
             .serialize();
         fs::write(&self.path, bytes).map_err(|e| {
-          grouplink::error::Error::ProtobufEncodingError(
-            grouplink::error::ProtobufCodingFailure::Io(e),
+          grouplink_low_level::error::Error::ProtobufEncodingError(
+            grouplink_low_level::error::ProtobufCodingFailure::Io(e),
           )
         })?;
         Ok(())
@@ -334,8 +334,8 @@ pub mod stores {
       async fn extract(record: PathBuf) -> Result<Self, Self::Error> {
         let bytes: Box<[u8]> = fs::read(&record)
           .map_err(|e| {
-            grouplink::error::Error::ProtobufDecodingError(
-              grouplink::error::ProtobufCodingFailure::Io(e),
+            grouplink_low_level::error::Error::ProtobufDecodingError(
+              grouplink_low_level::error::ProtobufCodingFailure::Io(e),
             )
           })?
           .into_boxed_slice();
@@ -360,7 +360,7 @@ pub mod operations {
 
   use crate::key_info::*;
 
-  use grouplink::{
+  use grouplink_low_level::{
     identity,
     serde::{self, *},
     store::Persistent,

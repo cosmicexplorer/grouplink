@@ -35,19 +35,6 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
-pub mod commands;
-pub mod error;
-pub mod identity_db;
-pub mod key_info;
-pub mod sessions;
-
-use grouplink::{
-  identity::{proto as id_proto, Identity, Spontaneous},
-  rand,
-  serde::{self, *},
-  signal::IdentityKeyPair,
-};
-
 use clap::{App, Arg, ArgGroup, SubCommand};
 use dirs;
 
