@@ -98,7 +98,7 @@ pub mod stores {
     fn set(&mut self, key: Self::Key, value: Self::Value) -> Result<&Self::Value, Error> {
       match self.known_public_keys.entry(key.clone()) {
         Entry::Vacant(entry) => Ok(entry.insert(value)),
-        Entry::Occupied(entry) => Err(Error::KeyAlreadyImported(key.into())),
+        Entry::Occupied(_) => Err(Error::KeyAlreadyImported(key.into())),
       }
     }
   }
@@ -177,7 +177,7 @@ pub mod stores {
     fn set(&mut self, key: Self::Key, value: Self::Value) -> Result<&Self::Value, Error> {
       match self.known_private_keys.entry(key.clone()) {
         Entry::Vacant(entry) => Ok(entry.insert(value)),
-        Entry::Occupied(entry) => Err(Error::KeyAlreadyImported(key.into())),
+        Entry::Occupied(_) => Err(Error::KeyAlreadyImported(key.into())),
       }
     }
   }

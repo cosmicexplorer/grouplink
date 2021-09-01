@@ -13,6 +13,12 @@ pub enum Error {
   SealedSenderClientAlreadyExists(operations::stores::SealedSenderId),
   /// the sealed sender client with id {0:?} does not exist
   SealedSenderClientDoesNotExist(operations::stores::SealedSenderId),
+  /// the sealed sender client with id {0:?} for external identity {1} does not match identity {2}
+  SealedSenderClientDoesNotMatch(
+    operations::stores::SealedSenderId,
+    grouplink::identity::ExternalIdentity,
+    grouplink::identity::Identity,
+  ),
   /// a grouplink error was received: {0}
   LibraryError(#[from] grouplink::error::Error),
 }
@@ -39,7 +45,7 @@ pub mod operations {
   use super::{traits::SignalSessionOperation, Error};
 
   use grouplink::{
-    identity, session,
+    identity, message, session,
     signal::{self, IdentityKeyStore},
     store::{
       self,
@@ -381,7 +387,9 @@ pub mod operations {
             identity::SealedSenderIdentity,
             id_proto::SealedSenderIdentity,
           >::deserialize(&buf)?;
-          ids.push(deserialized_client);
+          if deserialized_client.inner == id.external {
+            ids.push(deserialized_client);
+          }
         }
         Ok(ids)
       }
@@ -413,7 +421,9 @@ pub mod operations {
         let path_segment = PathBuf::from(sealed_sender_id.clone());
         let sealed_sender_id_path = sealed_sender_id_root.join(path_segment);
         let mut file = fs::File::open(&sealed_sender_id_path).map_err(|e| match e.kind() {
-          io::ErrorKind::NotFound => Error::SealedSenderClientDoesNotExist(sealed_sender_id.into()),
+          io::ErrorKind::NotFound => {
+            Error::SealedSenderClientDoesNotExist(sealed_sender_id.clone().into())
+          }
           _ => Error::Io(e),
         })?;
         let mut buf: Vec<u8> = Vec::new();
@@ -422,6 +432,13 @@ pub mod operations {
           identity::SealedSenderIdentity,
           id_proto::SealedSenderIdentity,
         >::deserialize(&buf)?;
+        if deserialized_client.inner != id.external {
+          return Err(Error::SealedSenderClientDoesNotMatch(
+            sealed_sender_id.into(),
+            deserialized_client.inner,
+            id.clone(),
+          ));
+        }
         Ok(deserialized_client)
       }
     }
@@ -526,7 +543,7 @@ pub mod operations {
     use super::*;
 
     #[derive(Debug, Clone)]
-    pub struct SendSessionInitiatingMessage {
+    pub struct SendPreKeyBundleMessage {
       pub base_id: identity::Identity,
       pub sealed_sender_identity: identity::SealedSenderIdentity,
       pub target: identity::ExternalIdentity,
@@ -535,7 +552,7 @@ pub mod operations {
     }
 
     #[async_trait(?Send)]
-    impl SignalSessionOperation for SendSessionInitiatingMessage {
+    impl SignalSessionOperation for SendPreKeyBundleMessage {
       type OutType = session::SealedSenderMessage;
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
@@ -565,14 +582,14 @@ pub mod operations {
     }
 
     #[derive(Debug, Clone)]
-    pub struct ReceiveSessionInitiatingMessage {
+    pub struct ReceivePreKeyBundleMessage {
       pub sealed_sender_identity: identity::SealedSenderIdentity,
       pub message: session::SealedSenderMessage,
       pub store: Arc<RwLock<store::file_persistence::FileStore>>,
     }
 
     #[async_trait(?Send)]
-    impl SignalSessionOperation for ReceiveSessionInitiatingMessage {
+    impl SignalSessionOperation for ReceivePreKeyBundleMessage {
       type OutType = session::PreKeyBundle;
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
@@ -593,6 +610,118 @@ pub mod operations {
           &bundle_decrypted.plaintext,
         )?;
         Ok(bundle)
+      }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct SendSessionInitiatingMessage {
+      pub base_id: identity::Identity,
+      pub sealed_sender_identity: identity::SealedSenderIdentity,
+      pub bundle: session::PreKeyBundle,
+      pub store: Arc<RwLock<store::file_persistence::FileStore>>,
+      pub initial_message_contents: Box<[u8]>,
+    }
+
+    #[async_trait(?Send)]
+    impl SignalSessionOperation for SendSessionInitiatingMessage {
+      type OutType = message::Message;
+      type Error = Error;
+      async fn execute(&self) -> Result<Self::OutType, Self::Error> {
+        let Self {
+          base_id,
+          sealed_sender_identity,
+          bundle,
+          store,
+          initial_message_contents,
+        } = self;
+        let sender_cert = identity::generate_sender_cert(
+          /* FIXME: i think we can remove the .stripped_e164() here? or at least make it
+           * optional? */
+          sealed_sender_identity.stripped_e164(),
+          base_id.crypto,
+          identity::SenderCertTTL::default(),
+        )?;
+        let request = session::SealedSenderMessageRequest {
+          bundle: bundle.clone(),
+          sender_cert,
+          plaintext: initial_message_contents.as_ref(),
+        };
+        let mut store = store.write();
+        let initial_message = session::encrypt_initial_message(request, &mut store).await?;
+        Ok(message::Message::Sealed(initial_message))
+      }
+    }
+  }
+
+  pub mod followup {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct ReceiveSessionMessage {
+      pub sealed_sender_identity: identity::SealedSenderIdentity,
+      pub message: message::Message,
+      pub store: Arc<RwLock<store::file_persistence::FileStore>>,
+    }
+
+    #[async_trait(?Send)]
+    impl SignalSessionOperation for ReceiveSessionMessage {
+      type OutType = session::SealedSenderMessageResult;
+      type Error = Error;
+      async fn execute(&self) -> Result<Self::OutType, Self::Error> {
+        let Self {
+          sealed_sender_identity,
+          message,
+          store,
+        } = self;
+        let request = session::SealedSenderDecryptionRequest {
+          inner: message
+            .clone()
+            .assert_sealed()
+            .map_err(|e| Error::LibraryError(e.into()))?,
+          local_identity: sealed_sender_identity.clone(),
+        };
+        let mut store = store.write();
+        let message_result = session::decrypt_message(request, &mut store).await?;
+        Ok(message_result)
+      }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct SendSessionMessage {
+      pub base_id: identity::Identity,
+      pub sealed_sender_identity: identity::SealedSenderIdentity,
+      pub target: identity::ExternalIdentity,
+      pub followup_message_contents: Box<[u8]>,
+      pub store: Arc<RwLock<store::file_persistence::FileStore>>,
+    }
+
+    #[async_trait(?Send)]
+    impl SignalSessionOperation for SendSessionMessage {
+      type OutType = message::Message;
+      type Error = Error;
+      async fn execute(&self) -> Result<Self::OutType, Self::Error> {
+        let Self {
+          base_id,
+          sealed_sender_identity,
+          target,
+          followup_message_contents,
+          store,
+        } = self;
+        let sender_cert = identity::generate_sender_cert(
+          /* FIXME: i think we can remove the .stripped_e164() here? or at least make it
+           * optional? */
+          sealed_sender_identity.stripped_e164(),
+          base_id.crypto,
+          identity::SenderCertTTL::default(),
+        )?;
+        let request = session::SealedSenderFollowupMessageRequest {
+          target: target.clone(),
+          sender_cert,
+          plaintext: followup_message_contents.as_ref(),
+        };
+        let mut store = store.write();
+        let followup_message = session::encrypt_followup_message(request, &mut store).await?;
+        Ok(message::Message::Sealed(followup_message))
       }
     }
   }
