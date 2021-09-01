@@ -129,7 +129,6 @@ pub mod formats {
 
   pub mod protobuf {
     use super::*;
-    use crate::error::Error;
     use crate::util::encode_proto_message;
 
     use std::{convert::TryInto, default::Default};

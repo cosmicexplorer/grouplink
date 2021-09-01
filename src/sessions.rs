@@ -322,7 +322,6 @@ pub mod operations {
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
         use grouplink_low_level::serde::{Protobuf, Serializer};
-        use identity::{proto as id_proto, *};
         use io::Write;
 
         let GenerateSealedSenderIdentity {
@@ -347,7 +346,7 @@ pub mod operations {
         let sealed_sender_client = identity::generate_sealed_sender_identity(id.external.clone());
         let serialized_client: Box<[u8]> = Protobuf::<
           identity::SealedSenderIdentity,
-          id_proto::SealedSenderIdentity,
+          identity::proto::SealedSenderIdentity,
         >::new(sealed_sender_client.clone())
         .serialize();
         file.write_all(&serialized_client)?;
@@ -368,7 +367,6 @@ pub mod operations {
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
         use grouplink_low_level::serde::{Deserializer, Protobuf};
-        use identity::{proto as id_proto, *};
         use io::Read;
 
         let Self {
@@ -384,7 +382,7 @@ pub mod operations {
           file.read_to_end(&mut buf)?;
           let deserialized_client = Protobuf::<
             identity::SealedSenderIdentity,
-            id_proto::SealedSenderIdentity,
+            identity::proto::SealedSenderIdentity,
           >::deserialize(&buf)?;
           if deserialized_client.inner == id.external {
             ids.push(deserialized_client);
@@ -407,7 +405,6 @@ pub mod operations {
       type Error = Error;
       async fn execute(&self) -> Result<Self::OutType, Self::Error> {
         use grouplink_low_level::serde::{Deserializer, Protobuf};
-        use identity::{proto as id_proto, *};
         use io::Read;
 
         let Self {
@@ -429,7 +426,7 @@ pub mod operations {
         file.read_to_end(&mut buf)?;
         let deserialized_client = Protobuf::<
           identity::SealedSenderIdentity,
-          id_proto::SealedSenderIdentity,
+          identity::proto::SealedSenderIdentity,
         >::deserialize(&buf)?;
         if deserialized_client.inner != id.external {
           return Err(Error::SealedSenderClientDoesNotMatch(

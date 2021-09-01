@@ -58,7 +58,7 @@ pub mod stores {
 
   use std::{
     collections::{hash_map::Entry, HashMap},
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     path::PathBuf,
   };
 
@@ -360,11 +360,7 @@ pub mod operations {
 
   use crate::key_info::*;
 
-  use grouplink_low_level::{
-    identity,
-    serde::{self, *},
-    store::Persistent,
-  };
+  use grouplink_low_level::{serde::*, store::Persistent};
 
   use async_trait::async_trait;
   use parking_lot::RwLock;

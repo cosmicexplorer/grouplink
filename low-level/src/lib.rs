@@ -140,7 +140,7 @@
 /* Turn all warnings into errors! */
 /* #![deny(warnings)] */
 /* Warn for missing docs in general, and hard require crate-level docs. */
-#![warn(missing_docs)]
+/* #![warn(missing_docs)] */
 #![deny(missing_crate_level_docs)]
 /* Taken from the `libsignal_protocol` crate. */
 #![deny(unsafe_code)]

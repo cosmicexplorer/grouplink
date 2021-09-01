@@ -1,5 +1,3 @@
-use grouplink_low_level::error::Error as LibraryError;
-
 use displaydoc::Display;
 use thiserror::Error;
 
