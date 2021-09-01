@@ -49,6 +49,9 @@ pub mod operations {
   };
 
   use async_trait::async_trait;
+  use parking_lot::RwLock;
+
+  use std::sync::Arc;
 
   pub mod stores {
     use super::*;
@@ -454,10 +457,6 @@ pub mod operations {
   pub mod pre_keys {
     use super::*;
 
-    use parking_lot::RwLock;
-
-    use std::sync::Arc;
-
     #[derive(Debug, Clone)]
     pub struct GenerateSignedPreKey {
       pub store: Arc<RwLock<store::file_persistence::FileStore>>,
@@ -527,8 +526,74 @@ pub mod operations {
     use super::*;
 
     #[derive(Debug, Clone)]
-    pub struct SessionInitiatingMessage {
+    pub struct SendSessionInitiatingMessage {
+      pub base_id: identity::Identity,
+      pub sealed_sender_identity: identity::SealedSenderIdentity,
+      pub target: identity::ExternalIdentity,
       pub pre_key_bundle: session::PreKeyBundle,
+      pub store: Arc<RwLock<store::file_persistence::FileStore>>,
+    }
+
+    #[async_trait(?Send)]
+    impl SignalSessionOperation for SendSessionInitiatingMessage {
+      type OutType = session::SealedSenderMessage;
+      type Error = Error;
+      async fn execute(&self) -> Result<Self::OutType, Self::Error> {
+        let Self {
+          base_id,
+          sealed_sender_identity,
+          target,
+          pre_key_bundle,
+          store,
+        } = self;
+        let mut store = store.write();
+        let sender_cert = identity::generate_sender_cert(
+          /* FIXME: i think we can remove the .stripped_e164() here? or at least make it
+           * optional? */
+          sealed_sender_identity.stripped_e164(),
+          base_id.crypto,
+          identity::SenderCertTTL::default(),
+        )?;
+        let request = session::SealedSenderPreKeyBundleRequest {
+          bundle: pre_key_bundle.clone(),
+          sender_cert,
+          destination: target.clone(),
+        };
+        let message = session::encrypt_pre_key_bundle_message(request, &mut store).await?;
+        Ok(message)
+      }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ReceiveSessionInitiatingMessage {
+      pub sealed_sender_identity: identity::SealedSenderIdentity,
+      pub message: session::SealedSenderMessage,
+      pub store: Arc<RwLock<store::file_persistence::FileStore>>,
+    }
+
+    #[async_trait(?Send)]
+    impl SignalSessionOperation for ReceiveSessionInitiatingMessage {
+      type OutType = session::PreKeyBundle;
+      type Error = Error;
+      async fn execute(&self) -> Result<Self::OutType, Self::Error> {
+        use grouplink::serde::{Deserializer, Protobuf};
+
+        let Self {
+          sealed_sender_identity,
+          message,
+          store,
+        } = self;
+        let mut store = store.write();
+        let request = session::SealedSenderDecryptionRequest {
+          inner: message.clone(),
+          local_identity: sealed_sender_identity.clone(),
+        };
+        let bundle_decrypted = session::decrypt_pre_key_message(request, &mut store).await?;
+        let bundle = Protobuf::<session::PreKeyBundle, session::proto::PreKeyBundle>::deserialize(
+          &bundle_decrypted.plaintext,
+        )?;
+        Ok(bundle)
+      }
     }
   }
 }
