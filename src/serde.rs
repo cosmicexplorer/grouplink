@@ -5,8 +5,6 @@
 
 pub use traits::*;
 pub mod traits {
-  use crate::error::Error;
-
   pub trait Schema {
     type Source;
   }

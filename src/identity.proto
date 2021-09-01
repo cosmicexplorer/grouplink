@@ -38,3 +38,13 @@ message PublicKey {
   /* From [super::Identity::external] unmodified. */
   optional Address external = 2;
 }
+
+/* Serialization of [super::SealedSenderIdentity]. */
+message SealedSenderIdentity {
+  /* From [super::SealedSenderIdentity::inner] unmodified. */
+  optional Address inner = 1;
+  /* From [super::SealedSenderIdentity::e164] unmodified.
+   *
+   * *Note*: this field may legitimately be [None]. */
+  optional string e164 = 2;
+}

@@ -222,7 +222,7 @@ impl From<Identity> for PublicIdentity {
 
 /// An extension of [ExternalIdentity] which differentiates between different clients representing
 /// the same identity.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct SealedSenderIdentity {
   /// The external-facing identity.
   pub inner: ExternalIdentity,
@@ -577,6 +577,40 @@ mod serde_impl {
     }
   }
   pub use public_key::*;
+
+  mod sealed_sender_identity {
+    use super::*;
+
+    impl serde::Schema for proto::SealedSenderIdentity {
+      type Source = SealedSenderIdentity;
+    }
+
+    impl TryFrom<proto::SealedSenderIdentity> for SealedSenderIdentity {
+      type Error = Error;
+      fn try_from(proto_message: proto::SealedSenderIdentity) -> Result<Self, Error> {
+        let proto::SealedSenderIdentity { inner, e164 } = proto_message.clone();
+        let inner: ExternalIdentity = inner
+          .ok_or_else(|| {
+            Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+              format!("failed to find `inner` field!"),
+              format!("{:?}", proto_message),
+            ))
+          })?
+          .try_into()?;
+        Ok(Self { inner, e164 })
+      }
+    }
+
+    impl From<SealedSenderIdentity> for proto::SealedSenderIdentity {
+      fn from(value: SealedSenderIdentity) -> Self {
+        proto::SealedSenderIdentity {
+          inner: Some(value.inner.into()),
+          e164: value.e164,
+        }
+      }
+    }
+  }
+  pub use sealed_sender_identity::*;
 
   mod fingerprints {
     use crate::serde;
