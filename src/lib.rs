@@ -1,6 +1,12 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+//! This crate exposes a high-level API for encrypted messaging using the [Signal] Protocol. In
+//! particular, it relies on [grouplink_low_level] to send and receive encrypted messages in
+//! a secure session without needing to route through a remote server.
+//!
+//! [Signal]: https://signal.org
+
 /* Turn all warnings into errors! */
 /* #![deny(warnings)] */
 /* Warn for missing docs in general, and hard require crate-level docs. */

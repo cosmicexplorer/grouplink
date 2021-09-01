@@ -1,8 +1,16 @@
 /* Copyright 2021 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-//! This crate wraps [libsignal_protocol] and offers asynchronous message encryption and signature
-//! operations over arbitrary input files. It is intended to serve as a replacement for `gpg`.
+//! This crate wraps [libsignal_protocol] and offers message encryption operations without the
+//! expectation of a central server. This crate exposes a very low-level API for message encryption.
+//!
+//! The central contribution of this crate is to codify all of the information that goes through
+//! a remote server in the [Signal] app. It exposes a [protobuf][prost] serialization scheme for
+//! that information which allows individual messages to contain all the necessary information to
+//! initiate and continue an encrypted messaging session, avoiding the requirement for the
+//! remote server.
+//!
+//! [Signal]: https://signal.org
 //!
 //! An end-to-end example of a secure bidirectional conversation between two individuals
 //! *`alice`* and *`bob`*:
