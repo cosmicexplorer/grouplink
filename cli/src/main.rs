@@ -35,6 +35,8 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
+use grouplink;
+
 use clap::{App, Arg, ArgGroup, SubCommand};
 
 use std::{env, ffi::OsStr, fs, io, os::unix::ffi::OsStrExt, path::PathBuf};
@@ -76,8 +78,6 @@ fn main() {
         )
         .subcommand(
           SubCommand::with_name("create").about("Create a new private key.")
-            .arg(Arg::with_name("interactive").long("interactive")
-                 .help("If this argument is provided, or if `--key-file` is not provided, an interactive prompt is displayed.")),
         )
     )
     .subcommand(

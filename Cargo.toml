@@ -26,5 +26,5 @@ members = [
 default-members = [
     ".",
     "low-level",
-    "cli",
+    # "cli",
 ]
