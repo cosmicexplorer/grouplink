@@ -104,7 +104,7 @@ mod serde_impl {
         let proto::Message { r#type: inner } = value.clone();
         let inner = inner.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find the `type` field!"),
+            "failed to find the `type` field!".to_string(),
             format!("{:?}", value),
           ))
         })?;

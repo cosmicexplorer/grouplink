@@ -155,7 +155,6 @@ pub mod operations {
               store::StoreError::NonMatchingStoreIdentity(_, _),
             )) => (),
             Err(e) => {
-              let e: grouplink_low_level::error::Error = e.into();
               return Err(Error::LibraryError(e));
             }
           }
@@ -526,7 +525,7 @@ pub mod operations {
           session::generate_pre_key_bundle(
             base_id.external.clone(),
             signed_pre_key.clone(),
-            one_time_pre_key.clone(),
+            *one_time_pre_key,
             &store,
           )
           .await?,

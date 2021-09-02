@@ -3,7 +3,7 @@
 
 use prost::{self, Message};
 
-pub fn no_encoding_error(r: Result<(), prost::EncodeError>) -> () {
+pub fn no_encoding_error(r: Result<(), prost::EncodeError>) {
   r.expect("expect encoding into a vec to never fail")
 }
 

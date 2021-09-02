@@ -36,7 +36,6 @@
 #![allow(clippy::mutex_atomic)]
 
 use clap::{App, Arg, ArgGroup, SubCommand};
-use dirs;
 
 use std::{env, ffi::OsStr, fs, io, os::unix::ffi::OsStrExt, path::PathBuf};
 

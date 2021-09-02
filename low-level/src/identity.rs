@@ -338,13 +338,11 @@ impl SenderCertTTL {
   /// no longer be used to decrypt anything.
   pub fn calculate_expires_timestamp(self) -> Result<u64, IdentityError> {
     let now = SystemTime::now();
-    Ok(
-      now
-        .checked_add(self.0)
-        .ok_or_else(|| IdentityError::ExpirationIsTooFarInTheFuture(now, self.0))?
-        .duration_since(SystemTime::UNIX_EPOCH)?
-        .as_secs(),
-    )
+    if let Some(expiration) = now.checked_add(self.0) {
+      Ok(expiration.duration_since(SystemTime::UNIX_EPOCH)?.as_secs())
+    } else {
+      Err(IdentityError::ExpirationIsTooFarInTheFuture(now, self.0))
+    }
   }
 }
 
@@ -417,7 +415,7 @@ mod serde_impl {
         let proto::CryptographicIdentity { inner, seed } = proto_message.clone();
         let inner_vec: Vec<u8> = inner.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `inner` field!"),
+            "failed to find `inner` field!".to_string(),
             format!("{:?}", proto_message),
           ))
         })?;
@@ -426,7 +424,7 @@ mod serde_impl {
         let seed: signal::SessionSeed = seed
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `seed` field!"),
+              "failed to find `seed` field!".to_string(),
               format!("{:?}", proto_message),
             ))
           })?
@@ -469,14 +467,14 @@ mod serde_impl {
         let proto::Address { name, device_id } = proto_message.clone();
         let name = name.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `name` field!"),
+            "failed to find `name` field!".to_string(),
             format!("{:?}", proto_message),
           ))
         })?;
         let device_id: signal::DeviceId = device_id
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `device_id` field!"),
+              "failed to find `device_id` field!".to_string(),
               format!("{:?}", proto_message),
             ))
           })?
@@ -501,7 +499,7 @@ mod serde_impl {
         let crypto: CryptographicIdentity = crypto
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `crypto` field!"),
+              "failed to find `crypto` field!".to_string(),
               format!("{:?}", proto_message),
             ))
           })?
@@ -509,7 +507,7 @@ mod serde_impl {
         let external: ExternalIdentity = external
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `external` field!"),
+              "failed to find `external` field!".to_string(),
               format!("{:?}", proto_message),
             ))
           })?
@@ -546,7 +544,7 @@ mod serde_impl {
         } = proto_message.clone();
         let public_key_vec: Vec<u8> = public_key.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `public_key` field!"),
+            "failed to find `public_key` field!".to_string(),
             format!("{:?}", proto_message),
           ))
         })?;
@@ -555,7 +553,7 @@ mod serde_impl {
         let external: ExternalIdentity = external
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `external` field!"),
+              "failed to find `external` field!".to_string(),
               format!("{:?}", proto_message),
             ))
           })?
@@ -592,7 +590,7 @@ mod serde_impl {
         let inner: ExternalIdentity = inner
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `inner` field!"),
+              "failed to find `inner` field!".to_string(),
               format!("{:?}", proto_message),
             ))
           })?

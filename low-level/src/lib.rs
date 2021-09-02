@@ -166,6 +166,8 @@
   clippy::unseparated_literal_suffix,
   clippy::used_underscore_binding
 )]
+/* We use inner modules in several places in this crate for ergonomics. */
+#![allow(clippy::module_inception)]
 /* It is often more clear to show that nothing is being moved. */
 #![allow(clippy::match_ref_pats)]
 /* Subjective style. */

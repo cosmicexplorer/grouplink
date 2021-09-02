@@ -155,7 +155,7 @@ pub mod conversions {
       } = value.clone();
       let encoded_signal_key_pair: Vec<u8> = signal_key_pair.ok_or_else(|| {
         Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-          format!("failed to find `signal_key_pair` field!"),
+          "failed to find `signal_key_pair` field!".to_string(),
           format!("{:?}", value),
         ))
       })?;
@@ -164,7 +164,7 @@ pub mod conversions {
       let id: signal::SessionSeed = session_seed
         .ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `session_seed` field!"),
+            "failed to find `session_seed` field!".to_string(),
             format!("{:?}", value),
           ))
         })?
@@ -908,17 +908,11 @@ pub mod file_persistence {
 
   impl ExtractionBehavior {
     fn should_try_extract(&self) -> bool {
-      match self {
-        Self::OverwriteWithDefault => false,
-        _ => true,
-      }
+      !matches!(self, Self::OverwriteWithDefault)
     }
 
     fn should_propagate_error(&self) -> bool {
-      match self {
-        Self::ReadOrError => true,
-        _ => false,
-      }
+      matches!(self, Self::ReadOrError)
     }
 
     /// Apply the precedence appropriate for this enum case to initialize `P` from a persistent

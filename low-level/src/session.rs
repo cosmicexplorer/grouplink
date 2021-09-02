@@ -103,10 +103,9 @@ impl SignedPreKey {
       .calculate_signature(&pub_signed_prekey, csprng)?;
     id_store.persist().await?;
 
-    let inner =
-      signal::SignedPreKeyRecord::new(id.into(), get_timestamp(), &pair.into(), &pub_sign);
+    let inner = signal::SignedPreKeyRecord::new(id, get_timestamp(), &pair.into(), &pub_sign);
     signed_prekey_store
-      .save_signed_pre_key(id.into(), &inner, None)
+      .save_signed_pre_key(id, &inner, None)
       .await?;
     signed_prekey_store.persist().await?;
 
@@ -220,8 +219,8 @@ impl OneTimePreKey {
     Error: From<<PK as Persistent<Record>>::Error>,
   {
     let OneTimePreKeyRequest { id, pair } = params;
-    let inner = signal::PreKeyRecord::new(id.into(), &pair.into());
-    store.save_pre_key(id.into(), &inner, None).await?;
+    let inner = signal::PreKeyRecord::new(id, &pair.into());
+    store.save_pre_key(id, &inner, None).await?;
     store.persist().await?;
     Ok(Self { id, pair })
   }
@@ -362,8 +361,8 @@ impl PreKeyBundle {
     let inner = signal::PreKeyBundle::new(
       seed.into(),
       destination.device_id.into(),
-      Some((one_time.id.into(), *one_time.pair.public_key())),
-      signed.id.into(),
+      Some((one_time.id, *one_time.pair.public_key())),
+      signed.id,
       *signed.pair.public_key(),
       signed.signature.to_vec(),
       *inner.identity_key(),
@@ -597,13 +596,12 @@ impl SealedSenderMessage {
   ///
   /// Used in [encrypt_initial_message].
   pub async fn intern<
-    'a,
     Record,
     S: signal::SessionStore + Persistent<Record>,
     ID: signal::IdentityKeyStore + Persistent<Record>,
     R: CryptoRng + Rng,
   >(
-    request: SealedSenderMessageRequest<'a>,
+    request: SealedSenderMessageRequest<'_>,
     session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
@@ -638,13 +636,12 @@ impl SealedSenderMessage {
   ///
   /// Used in [encrypt_followup_message] and [Self::intern].
   pub async fn intern_followup<
-    'a,
     Record,
     S: signal::SessionStore + Persistent<Record>,
     ID: signal::IdentityKeyStore + Persistent<Record>,
     R: CryptoRng + Rng,
   >(
-    request: SealedSenderFollowupMessageRequest<'a>,
+    request: SealedSenderFollowupMessageRequest<'_>,
     session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
@@ -1284,14 +1281,14 @@ mod serde_impl {
         let destination: ExternalIdentity = destination
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `destination` field!"),
+              "failed to find `destination` field!".to_string(),
               format!("{:?}", value),
             ))
           })?
           .try_into()?;
         let registration_id: u32 = registration_id.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `registration_id` field!"),
+            "failed to find `registration_id` field!".to_string(),
             format!("{:?}", value),
           ))
         })?;
@@ -1306,7 +1303,7 @@ mod serde_impl {
       (None, None) => None,
       _ => {
         return Err(Error::ProtobufDecodingError(ProtobufCodingFailure::FieldCompositionWasIncorrect(
-          format!("if either the fields `pre_key_id` or `pre_key_public` are provided, then *BOTH* must be provided!"),
+          "if either the fields `pre_key_id` or `pre_key_public` are provided, then *BOTH* must be provided!".to_string(),
           format!("{:?}", value)
         )))
       }
@@ -1314,14 +1311,14 @@ mod serde_impl {
         let signed_pre_key_id: signal::SignedPreKeyId = signed_pre_key_id
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `signed_pre_key_id` field!"),
+              "failed to find `signed_pre_key_id` field!".to_string(),
               format!("{:?}", value),
             ))
           })?
           .into();
         let signed_pre_key_public: signal::PublicKey = signed_pre_key_public.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `signed_pre_key_public` field!"),
+            "failed to find `signed_pre_key_public` field!".to_string(),
             format!("{:?}", value),
           ))
         })?[..]
@@ -1329,14 +1326,14 @@ mod serde_impl {
         let signed_pre_key_signature: Vec<u8> = signed_pre_key_signature
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `signed_pre_key_signature` field!"),
+              "failed to find `signed_pre_key_signature` field!".to_string(),
               format!("{:?}", value),
             ))
           })?
           .to_vec();
         let identity_key: signal::IdentityKey = identity_key.ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-            format!("failed to find `identity_key` field!"),
+            "failed to find `identity_key` field!".to_string(),
             format!("{:?}", value),
           ))
         })?[..]
@@ -1389,7 +1386,7 @@ mod serde_impl {
           trust_root_public_key
             .ok_or_else(|| {
               Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-                format!("failed to find `trust_root_public_key` field!"),
+                "failed to find `trust_root_public_key` field!".to_string(),
                 format!("{:?}", value),
               ))
             })?
@@ -1398,7 +1395,7 @@ mod serde_impl {
         let encrypted_sealed_sender_message: Box<[u8]> = encrypted_sealed_sender_message
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              format!("failed to find `encrypted_sealed_sender_message` field!"),
+              "failed to find `encrypted_sealed_sender_message` field!".to_string(),
               format!("{:?}", value),
             ))
           })?
