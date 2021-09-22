@@ -557,7 +557,6 @@ impl SealedSenderMessage {
     R: CryptoRng + Rng,
   >(
     request: SealedSenderPreKeyBundleRequest,
-    session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
   ) -> Result<Self, Error>
@@ -585,9 +584,6 @@ impl SealedSenderMessage {
       signal::ContentHint::Default,
       None,
     )?;
-
-    /* let session_records = session_store.load_existing_sessions(&[&dest], None).await?; */
-    /* let record_refs: Vec<&signal::SessionRecord> = session_records.iter().collect(); */
 
     let encrypted_message = signal::sealed_sender_multi_recipient_encrypt_full(
       vec![dest],
@@ -718,7 +714,6 @@ where
 {
   SealedSenderMessage::intern_pre_key_bundle::<Record, S, ID, _>(
     req,
-    &mut store.session_store,
     &mut store.identity_store,
     &mut rand::thread_rng(),
   )
