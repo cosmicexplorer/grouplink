@@ -58,13 +58,13 @@ pub struct CryptographicIdentity {
   /// Used to reliably construct KDFs for this identity.
   ///
   /// Returned by [IdentityKeyStore::get_local_registration_id].
-  pub seed: signal::SessionSeed,
+  pub seed: crate::wrapper_types::SessionSeed,
 }
 
 impl Spontaneous<()> for CryptographicIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     let inner = signal::IdentityKeyPair::generate(csprng);
-    let seed: signal::SessionSeed = csprng.gen::<u32>().into();
+    let seed: crate::wrapper_types::SessionSeed = csprng.gen::<u32>().into();
     Self { inner, seed }
   }
 }
@@ -421,7 +421,7 @@ mod serde_impl {
         })?;
         let inner: &[u8] = inner_vec.as_ref();
         let inner: signal::IdentityKeyPair = inner.try_into()?;
-        let seed: signal::SessionSeed = seed
+        let seed: crate::wrapper_types::SessionSeed = seed
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
               "failed to find `seed` field!".to_string(),

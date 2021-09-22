@@ -96,7 +96,10 @@ pub enum StoreError {
   /// the stored identity {0:?} did not match the expected key pair {1:?}
   NonMatchingStoreIdentity(signal::IdentityKeyPair, signal::IdentityKeyPair),
   /// the stored seed {0:?} did not match the expected seed {1:?}
-  NonMatchingStoreSeed(signal::SessionSeed, signal::SessionSeed),
+  NonMatchingStoreSeed(
+    crate::wrapper_types::SessionSeed,
+    crate::wrapper_types::SessionSeed,
+  ),
 }
 
 /// Implement wrapper structs for in-memory signal stores e.g. [signal::IdentityKeyStore].
@@ -161,7 +164,7 @@ pub mod conversions {
       })?;
       let decoded_signal_key_pair =
         signal::IdentityKeyPair::try_from(encoded_signal_key_pair.as_ref())?;
-      let id: signal::SessionSeed = session_seed
+      let id: crate::wrapper_types::SessionSeed = session_seed
         .ok_or_else(|| {
           Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
             "failed to find `session_seed` field!".to_string(),
@@ -180,7 +183,7 @@ pub mod conversions {
         .collect::<Result<HashMap<_, _>, Error>>()?;
       Ok(signal::InMemIdentityKeyStore::new_with_known_keys(
         decoded_signal_key_pair,
-        id,
+        id.into(),
         known_keys,
       ))
     }
@@ -251,12 +254,17 @@ pub mod conversions {
       let pre_keys = pre_keys
         .into_iter()
         .map(|(id, record)| {
-          let id: signal::PreKeyId = id.into();
+          let id: crate::wrapper_types::PreKeyId = id.into();
           let record = signal::PreKeyRecord::deserialize(&record)?;
           Ok((id, record))
         })
         .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(signal::InMemPreKeyStore { pre_keys })
+      Ok(signal::InMemPreKeyStore {
+        pre_keys: pre_keys
+          .into_iter()
+          .map(|(id, record)| (id.into(), record))
+          .collect(),
+      })
     }
   }
 
@@ -322,12 +330,17 @@ pub mod conversions {
       let signed_pre_keys = signed_pre_keys
         .into_iter()
         .map(|(id, record)| {
-          let id: signal::SignedPreKeyId = id.into();
+          let id: crate::wrapper_types::SignedPreKeyId = id.into();
           let record = signal::SignedPreKeyRecord::deserialize(&record)?;
           Ok((id, record))
         })
         .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(signal::InMemSignedPreKeyStore { signed_pre_keys })
+      Ok(signal::InMemSignedPreKeyStore {
+        signed_pre_keys: signed_pre_keys
+          .into_iter()
+          .map(|(id, record)| (id.into(), record))
+          .collect(),
+      })
     }
   }
 
@@ -569,8 +582,8 @@ pub mod file_persistence {
     async fn get_local_registration_id(
       &self,
       ctx: signal::Context,
-    ) -> Result<signal::SessionSeed, signal::SignalProtocolError> {
-      self.inner.0.get_local_registration_id(ctx).await
+    ) -> Result<u32, signal::SignalProtocolError> {
+      self.inner.0.get_local_registration_id(ctx).await.into()
     }
     async fn save_identity(
       &mut self,
@@ -644,25 +657,29 @@ pub mod file_persistence {
   impl signal::PreKeyStore for FilePreKeyStore {
     async fn get_pre_key(
       &self,
-      prekey_id: signal::PreKeyId,
+      prekey_id: u32,
       ctx: signal::Context,
     ) -> Result<signal::PreKeyRecord, signal::SignalProtocolError> {
-      self.inner.0.get_pre_key(prekey_id, ctx).await
+      self.inner.0.get_pre_key(prekey_id.into(), ctx).await
     }
     async fn save_pre_key(
       &mut self,
-      prekey_id: signal::PreKeyId,
+      prekey_id: u32,
       record: &signal::PreKeyRecord,
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
-      self.inner.0.save_pre_key(prekey_id, record, ctx).await
+      self
+        .inner
+        .0
+        .save_pre_key(prekey_id.into(), record, ctx)
+        .await
     }
     async fn remove_pre_key(
       &mut self,
-      prekey_id: signal::PreKeyId,
+      prekey_id: u32,
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
-      self.inner.0.remove_pre_key(prekey_id, ctx).await
+      self.inner.0.remove_pre_key(prekey_id.into(), ctx).await
     }
   }
 
@@ -708,21 +725,25 @@ pub mod file_persistence {
   impl signal::SignedPreKeyStore for FileSignedPreKeyStore {
     async fn get_signed_pre_key(
       &self,
-      signed_prekey_id: signal::SignedPreKeyId,
+      signed_prekey_id: u32,
       ctx: signal::Context,
     ) -> Result<signal::SignedPreKeyRecord, signal::SignalProtocolError> {
-      self.inner.0.get_signed_pre_key(signed_prekey_id, ctx).await
+      self
+        .inner
+        .0
+        .get_signed_pre_key(signed_prekey_id.into(), ctx)
+        .await
     }
     async fn save_signed_pre_key(
       &mut self,
-      signed_prekey_id: signal::SignedPreKeyId,
+      signed_prekey_id: u32,
       record: &signal::SignedPreKeyRecord,
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
       self
         .inner
         .0
-        .save_signed_pre_key(signed_prekey_id, record, ctx)
+        .save_signed_pre_key(signed_prekey_id.into(), record, ctx)
         .await
     }
   }
@@ -781,6 +802,14 @@ pub mod file_persistence {
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
       self.inner.0.store_session(address, record, ctx).await
+    }
+
+    async fn load_existing_sessions(
+      &self,
+      addresses: &[&signal::ProtocolAddress],
+      ctx: signal::Context,
+    ) -> Result<Vec<signal::SessionRecord>, signal::SignalProtocolError> {
+      self.inner.0.load_existing_sessions(addresses, ctx).await
     }
   }
 
@@ -1002,7 +1031,7 @@ pub mod file_persistence {
         .await?,
       identity_store: match behavior
         .extract::<FileIdStore, _>(identity.clone(), || FileIdStore {
-          inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id)),
+          inner: IdStore::from(signal::InMemIdentityKeyStore::new(key_pair, id.into())),
           path: identity,
         })
         .await
@@ -1016,9 +1045,9 @@ pub mod file_persistence {
             )));
           }
           let stored_seed = store.get_local_registration_id(None).await?;
-          if id != stored_seed {
+          if id != stored_seed.into() {
             return Err(Error::Store(StoreError::NonMatchingStoreSeed(
-              stored_seed,
+              stored_seed.into(),
               id,
             )));
           }

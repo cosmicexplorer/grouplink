@@ -63,6 +63,7 @@
 //! assert!(bob_store.identity_store.save_identity(&alice.external.clone().into(),
 //!                                                &IdentityKey::new(*alice.crypto.inner.public_key()),
 //!                                                None).await? == false);
+//!
 //! let bundle_message = encrypt_pre_key_bundle_message(
 //!   SealedSenderPreKeyBundleRequest {
 //!     bundle: bob_pre_key_bundle,
@@ -188,6 +189,7 @@ pub mod serde;
 pub mod session;
 pub mod store;
 mod util;
+pub mod wrapper_types;
 
 pub use identity::{
   generate_identity, generate_sealed_sender_identity, generate_sender_cert, Identity, SenderCert,

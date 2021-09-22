@@ -36,7 +36,7 @@ use std::time::SystemTime;
 pub struct SignedPreKeyRequest {
   /// Specifies this particular signed pre-key in the local [SignedPreKeyStore]. Randomly generated
   /// upon creation of a [Self].
-  pub id: signal::SignedPreKeyId,
+  pub id: crate::wrapper_types::SignedPreKeyId,
   /// The cryptographic public/private key pair represented by the signed pre-key to
   /// create. Randomly generated upon creation of a [Self].
   pub pair: signal::IdentityKeyPair,
@@ -45,7 +45,7 @@ pub struct SignedPreKeyRequest {
 impl Spontaneous<()> for SignedPreKeyRequest {
   fn generate<R: CryptoRng + Rng>(_params: (), r: &mut R) -> Self {
     let pair = signal::IdentityKeyPair::generate(r);
-    let id: signal::SignedPreKeyId = Box::new(r).gen::<u32>().into();
+    let id: crate::wrapper_types::SignedPreKeyId = Box::new(r).gen::<u32>().into();
     Self { id, pair }
   }
 }
@@ -59,7 +59,7 @@ impl Spontaneous<()> for SignedPreKeyRequest {
 #[derive(Debug, Clone)]
 pub struct SignedPreKey {
   /// From [SignedPreKeyRequest::id].
-  pub id: signal::SignedPreKeyId,
+  pub id: crate::wrapper_types::SignedPreKeyId,
   /// From [SignedPreKeyRequest::pair].
   pub pair: signal::IdentityKeyPair,
   /// Opaque signature which is checked every time a [PreKeyBundle] is created using this signed
@@ -103,9 +103,10 @@ impl SignedPreKey {
       .calculate_signature(&pub_signed_prekey, csprng)?;
     id_store.persist().await?;
 
-    let inner = signal::SignedPreKeyRecord::new(id, get_timestamp(), &pair.into(), &pub_sign);
+    let inner =
+      signal::SignedPreKeyRecord::new(id.into(), get_timestamp(), &pair.into(), &pub_sign);
     signed_prekey_store
-      .save_signed_pre_key(id, &inner, None)
+      .save_signed_pre_key(id.into(), &inner, None)
       .await?;
     signed_prekey_store.persist().await?;
 
@@ -180,7 +181,7 @@ where
 pub struct OneTimePreKeyRequest {
   /// Specifies this particular one-time pre-key in the local [PreKeyStore]. Randomly generated
   /// upon creation of a [Self].
-  pub id: signal::PreKeyId,
+  pub id: crate::wrapper_types::PreKeyId,
   /// The cryptographic public/private key pair represented by the one-time pre-key to
   /// create. Randomly generated upon creation of a [Self].
   pub pair: signal::IdentityKeyPair,
@@ -189,7 +190,7 @@ pub struct OneTimePreKeyRequest {
 impl Spontaneous<()> for OneTimePreKeyRequest {
   fn generate<R: CryptoRng + Rng>(_params: (), r: &mut R) -> Self {
     let pair = signal::IdentityKeyPair::generate(r);
-    let id: signal::PreKeyId = Box::new(r).gen::<u32>().into();
+    let id: crate::wrapper_types::PreKeyId = Box::new(r).gen::<u32>().into();
     Self { id, pair }
   }
 }
@@ -202,7 +203,7 @@ impl Spontaneous<()> for OneTimePreKeyRequest {
 #[derive(Debug, Clone, Copy)]
 pub struct OneTimePreKey {
   /// From [OneTimePreKeyRequest::id].
-  pub id: signal::PreKeyId,
+  pub id: crate::wrapper_types::PreKeyId,
   /// From [OneTimePreKeyRequest::pair].
   pub pair: signal::IdentityKeyPair,
 }
@@ -219,8 +220,8 @@ impl OneTimePreKey {
     Error: From<<PK as Persistent<Record>>::Error>,
   {
     let OneTimePreKeyRequest { id, pair } = params;
-    let inner = signal::PreKeyRecord::new(id, &pair.into());
-    store.save_pre_key(id, &inner, None).await?;
+    let inner = signal::PreKeyRecord::new(id.into(), &pair.into());
+    store.save_pre_key(id.into(), &inner, None).await?;
     store.persist().await?;
     Ok(Self { id, pair })
   }
@@ -308,7 +309,10 @@ impl PreKeyBundleRequest {
   ) -> Result<Self, Error> {
     let seed = store.get_local_registration_id(None).await?;
     let inner = store.get_identity_key_pair(None).await?;
-    let identity = CryptographicIdentity { inner, seed };
+    let identity = CryptographicIdentity {
+      inner,
+      seed: seed.into(),
+    };
     Ok(Self {
       destination,
       signed,
@@ -361,8 +365,8 @@ impl PreKeyBundle {
     let inner = signal::PreKeyBundle::new(
       seed.into(),
       destination.device_id.into(),
-      Some((one_time.id, *one_time.pair.public_key())),
-      signed.id,
+      Some((one_time.id.into(), *one_time.pair.public_key())),
+      signed.id.into(),
       *signed.pair.public_key(),
       signed.signature.to_vec(),
       *inner.identity_key(),
@@ -548,10 +552,12 @@ impl SealedSenderMessage {
   /// Used in [encrypt_pre_key_bundle_message].
   pub async fn intern_pre_key_bundle<
     Record,
+    S: signal::SessionStore + Persistent<Record>,
     ID: signal::IdentityKeyStore + Persistent<Record>,
     R: CryptoRng + Rng,
   >(
     request: SealedSenderPreKeyBundleRequest,
+    session_store: &mut S,
     id_store: &mut ID,
     csprng: &mut R,
   ) -> Result<Self, Error>
@@ -579,10 +585,20 @@ impl SealedSenderMessage {
       signal::ContentHint::Default,
       None,
     )?;
-    let encrypted_message =
-      signal::sealed_sender_multi_recipient_encrypt(&[&dest], &usmc, id_store, None, csprng)
-        .await?
-        .into_boxed_slice();
+
+    /* let session_records = session_store.load_existing_sessions(&[&dest], None).await?; */
+    /* let record_refs: Vec<&signal::SessionRecord> = session_records.iter().collect(); */
+
+    let encrypted_message = signal::sealed_sender_multi_recipient_encrypt_full(
+      vec![dest],
+      signal::SealedSenderDestinationSessions::CreateSessions,
+      &usmc,
+      id_store,
+      None,
+      csprng,
+    )
+    .await?
+    .into_boxed_slice();
     id_store.persist().await?;
 
     Ok(Self {
@@ -700,8 +716,9 @@ where
     + From<<SPK as Persistent<Record>>::Error>
     + From<<ID as Persistent<Record>>::Error>,
 {
-  SealedSenderMessage::intern_pre_key_bundle::<Record, ID, _>(
+  SealedSenderMessage::intern_pre_key_bundle::<Record, S, ID, _>(
     req,
+    &mut store.session_store,
     &mut store.identity_store,
     &mut rand::thread_rng(),
   )
@@ -1292,12 +1309,12 @@ mod serde_impl {
             format!("{:?}", value),
           ))
         })?;
-        let pre_key_id: Option<signal::PreKeyId> = pre_key_id.map(|key| key.into());
+        let pre_key_id: Option<crate::wrapper_types::PreKeyId> = pre_key_id.map(|key| key.into());
         let pre_key_public: Option<signal::PublicKey> = match pre_key_public {
           Some(key) => Some(signal::PublicKey::try_from(key.as_ref())?),
           None => None,
         };
-        let pre_key: Option<(signal::PreKeyId, signal::PublicKey)> = match (pre_key_id, pre_key_public)
+        let pre_key: Option<(crate::wrapper_types::PreKeyId, signal::PublicKey)> = match (pre_key_id, pre_key_public)
     {
       (Some(id), Some(key)) => Some((id, key)),
       (None, None) => None,
@@ -1308,7 +1325,7 @@ mod serde_impl {
         )))
       }
     };
-        let signed_pre_key_id: signal::SignedPreKeyId = signed_pre_key_id
+        let signed_pre_key_id: crate::wrapper_types::SignedPreKeyId = signed_pre_key_id
           .ok_or_else(|| {
             Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
               "failed to find `signed_pre_key_id` field!".to_string(),
@@ -1343,8 +1360,8 @@ mod serde_impl {
           inner: signal::PreKeyBundle::new(
             registration_id,
             destination.device_id.into(),
-            pre_key,
-            signed_pre_key_id,
+            pre_key.map(|(id, pub_key)| (id.into(), pub_key)),
+            signed_pre_key_id.into(),
             signed_pre_key_public,
             signed_pre_key_signature,
             identity_key,
