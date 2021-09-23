@@ -278,19 +278,6 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek"
-version = "3.0.0"
-source = "git+https://github.com/signalapp/curve25519-dalek.git?branch=3.0.0-lizard2#2694ad3b789635f90f941648ae952f58d59ffc73"
-dependencies = [
- "byteorder",
- "digest",
- "rand_core 0.5.1",
- "serde",
- "subtle",
- "zeroize",
-]
-
-[[package]]
-name = "curve25519-dalek"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b9fdf9972b2bd6af2d913799d9ebc165ea4d2e65878e329d9c6b372c4491b61"
@@ -298,6 +285,7 @@ dependencies = [
  "byteorder",
  "digest",
  "rand_core 0.5.1",
+ "serde",
  "subtle",
  "zeroize",
 ]
@@ -667,16 +655,17 @@ checksum = "3cb00336871be5ed2c8ed44b60ae9959dc5b9f08539422ed43f09e34ecaeba21"
 [[package]]
 name = "libsignal-protocol"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=7010c6aa60de23e81c208ec16ea7bb72e281374d#7010c6aa60de23e81c208ec16ea7bb72e281374d"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=f343871a4dbdc0073176fb58e8b35f9a283c848f#f343871a4dbdc0073176fb58e8b35f9a283c848f"
 dependencies = [
  "aes",
  "aes-gcm-siv",
  "arrayref",
  "async-trait",
  "block-modes",
- "curve25519-dalek 3.0.0",
+ "curve25519-dalek",
  "hex 0.4.3",
  "hmac",
+ "itertools 0.10.1",
  "log",
  "num_enum",
  "prost 0.8.0",
@@ -1535,7 +1524,7 @@ version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a0c105152107e3b96f6a00a65e86ce82d9b125230e1c4302940eca58ff71f4f"
 dependencies = [
- "curve25519-dalek 3.2.0",
+ "curve25519-dalek",
  "rand_core 0.5.1",
  "zeroize",
 ]
