@@ -29,7 +29,7 @@ use rand::{self, CryptoRng, Rng};
 #[cfg(doc)]
 use libsignal_protocol::{PreKeyStore, SignedPreKeyStore};
 
-use std::time::SystemTime;
+use std::{convert::TryFrom, time::SystemTime};
 
 /// Specify the parameters to create a new [SignedPreKey].
 #[derive(Debug, Clone, Copy)]
@@ -596,10 +596,14 @@ impl SealedSenderMessage {
     .await?
     .into_boxed_slice();
     id_store.persist().await?;
+    let [encrypted_message] = <[_; 1]>::try_from(signal::sealed_sender_multi_recipient_fan_out(
+      &encrypted_message,
+    )?)
+    .expect("we have just ensured above that there is only one recipient at a time");
 
     Ok(Self {
       trust_root,
-      encrypted_message,
+      encrypted_message: encrypted_message.into_boxed_slice(),
     })
   }
 
