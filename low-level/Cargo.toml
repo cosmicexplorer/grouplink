@@ -9,7 +9,7 @@ license = "AGPL-3.0-only"
 async-trait = "0.1.51"
 libc = "0.2.94"
 # This corresponds to the branch named `grouplink-fork`.
-libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "c4ad24f3472dbe570b03876a59bb11995af3fbf3" }
+libsignal-protocol = { git = "https://github.com/cosmicexplorer/libsignal-client.git", rev = "a20a58e5aa85d3d6571f4f4e915ff2ef2c5e459a" }
 rand = "0.7"
 prost = "0.7"
 bytes = "1"
