@@ -121,6 +121,73 @@ Note that this involves **one less message sent than in Signal**, by virtue of s
 
 *At this point, both Alice and Bob will have a copy of the Double Ratchet KDF [^double-ratchet-kdf], and either can send a message to the other using that KDF.*
 
+# Signal Extensions
+
+*Updated 2021-09-25.*
+
+There is a vague implementation of a `gpg`-*like* tool based on Signal in the repo currently (as the top-level [`grouplink` crate](../../README.md)). That work is perhaps 50% done. However, we now face a choice: we would like to be able to resist metadata analysis as well, something that Signal itself considers out of scope (as the Signal app requires the recipient to be specified unencrypted to know where to route a message to [^sealed-sender]). Our approach to solving this conundrum may require rethinking our (and Signal's) model of identity a bit.
+
+So below we describe what we might want to add on top of the Signal protocol, *separate* from our current achievement of separating the Signal protocol form the Signal server. We hope that this will lead to a result that can still be used in a format similar to `gpg` as the `grouplink` CLI currently provides, but we hope that by doing this work now we can also achieve anonymity and plausible deniability for our users without special setup.
+
+## Review of Sealed-Sender
+
+A brief understanding of the current Signal implementation of  "sealed sender"[^sealed-sender] has been summarized and converted into a module docstring in our upstream signal fork [here](https://github.com/cosmicexplorer/libsignal-client/commit/4b25d1a9774a6d3026b14af2b64594639ee1b8e5):
+
+> This is a single-key multi-recipient KEM, defined in Manuel Barbosa's ["Randomness Reuse:
+> Extensions and Improvements"](https://haslab.uminho.pt/mbb/files/reuse.pdf). It uses the "Generic Construction" in `4.1` of that paper,
+> instantiated with ElGamal encryption.
+>
+> 1. generate a random [sealed_sender_v2::DerivedKeys].
+> 2. encrypt the keypair using a shared secret derived from the sender's private key and
+>    recipient's public key (this secret never changes for that pair of identity keys) with
+>    [sealed_sender_v2::apply_agreement_xor].
+> 3. sign the encrypted keypair using the sender's private key with
+>    [sealed_sender_v2::compute_authentication_tag].
+> 4. use the keypair from (1) to symmetrically encrypt the underlying
+>    [UnidentifiedSenderMessageContent].
+
+This background becomes useful for the following analysis.
+
+## Signal's Simplifying Assumptions
+
+**We would like to enable rotation of static identity keys.**
+
+The above sealed-sender mechanism relies on a shared secret calculated by a DH key agreement using the sender's private key and the recipient's public key. This makes the secret static, since Signal currently makes the implicit assumption that identity keys do not change and therefore key compromise is catastrophic (this corresponds with Signal's stated intent to _not_ try to solve the case of device compromise *(TODO: add citation!)*). Note that the sealed-sender key for _individual_ messages uses randomness generated once per message (see paper linked above), but if a user's device is compromised, the compromise of the identity key means that all sealed-sender messages can then be read. This is especially a concern in our case because we want to be able to send these messages over insecure channels, and Signal retains some control over that by controlling the Signal server, while we want to remove that dependency as an explicit goal (and have been reasonably successful at this so far).
+
+### Towards Identity Key Rotation
+
+One salient feature of the double ratchet[^double-ratchet] mechanism, just as an architectural feature, is how it demarcates the ratcheting keys used for individual messages from long-term identity keys. It is also convenient how Signal separates a `ProtocolAddress` (with a recipient's UUID) from any specific identity key (which then gets looked up according to that UUID in the `IdentityKeyStore`). In particular, while the Signal app seems to apply TOFU when mapping a `ProtocolAddress`'s UUID to an identity key, the elements seem to already be in place to remove that assumption and enable rotation of the identity key corresponding to a user's UUID. This provides a solid foundation for experimenting with key rotation.
+
+### Wrinkle: UUID Rotation <=> Proposed "Sealed-Recipient" Extension
+
+We would like to extend the sealed-sender mechanism to cover encryption of the message *recipient* in a similar way. This was motivated by Moxie explicitly stating that "sealed recipient" would be unsuitable for specifically the Signal service[^sealed-sender]:
+> While the service always needs to know where a message should be delivered, ideally it shouldn’t need to know who the sender is.
+
+However, our goal is to separate Signal's message encryption from the Signal service, which lets us relax some assumptions (it also makes our job a little more difficult). In discussion with `@elidupree` and reading up on onion routing[^onion-routing], we realized that communication graph anonymity should probably be considered a necessary goal for `grouplink`, and it seems pretty clear that leaking static global identifiers like the recipient's UUID in a Signal `ProtocolAddress` defeats that (as that can simply be inspected by a passive adversary to remove half of the careful anonymization we would get via e.g. onion routing).
+
+## Analysis of Research Areas
+
+A few things vaguely come together here:
+1. **We want to be able to rotate identity keys.** The Signal codebase would make it relatively straightforward to add the ability to rotate the identity key used within a specific Double Ratchet[^double-ratchet] chain, or to modify the mapping of UUID => identity key via `IdentityKeyStoer` (which would allow someone to initiate a new double ratchet chain with that identity).
+2. **We want to be able to correctly route messages to a desired sender via some metadata within the message.** Signal currently uses a static UUID for the target of a Signal message for this purpose.
+3. **We do not want to leak information from a message that can be correlated to a sender's or recipient's identity** across any earlier or later message within a double ratchet chain.
+4. **We want to enable a user to retain multiple disparate identities**, and to share identities across devices.
+
+### Proposed TODO
+
+*Updated 2021-09-25.*
+
+A proposed set of milestones to incrementally achieve the above goals:
+1. **Add the ability to send a message which tells `grouplink` clients to start referring to a particular user with a totally new UUID**, which itself should probably be encrypted as part of a double ratchet message chain (as per (3)).
+2. **Add the ability to send a message which tells `grouplink` clients to map a particular UUID to a new public key (as per (1)).**
+3. **Add the ability to reset the identity key for a user within a particular double ratchet message chain (also as per (1)).**
+
+With the above, we hope to define a protocol that enables sending messages over arbitrary insecure streams, without any particular source of truth except by using a double ratchet message chain which was already securely established. It's not yet clear if this solves the problem of catastrophic private key compromise after the fact, but it *could* enable key rotation to _avoid_ such compromise (and in particular, to enable plausible deniability upon device compromise, if keys and UUIDs are rotated after sending the message that needs to be plausibly denied).
+
+#### Cwtch Research
+
+The *Cwtch* tool is a metadata-resistant secure messaging application which uses the tor network[^cwtch]. In implementing this, OpenPrivacy has *likely* had to figure out some way to **represent users' identities in a way that can be cryptographically authenticated by the intended recipient, but remains meaningless to a passive or active adversary.** We should look very closely at how they achieve this and whether we can rely on their richochet library[^libricochet], either as a direct code dependency, or as a model for how we'd like to structure our approach.
+
 [^signal]: https://signal.org
 [^x3dh]: https://signal.org/docs/specifications/x3dh/
 [^double-ratchet]: https://signal.org/docs/specifications/doubleratchet/
@@ -134,3 +201,6 @@ Note that this involves **one less message sent than in Signal**, by virtue of s
 [^wot]: https://en.wikipedia.org/wiki/Web_of_trust
 [^signal-analysis-medium]: https://medium.com/@justinomora/demystifying-the-signal-protocol-for-end-to-end-encryption-e2ee-ad6a567e6cb4
 [^signal-analysis-formal]: https://eprint.iacr.org/2016/1013.pdf
+[^onion-routing]: https://svn-archive.torproject.org/svn/projects/design-paper/tor-design.pdf
+[^cwtch]: https://openprivacy.ca/work/cwtch/
+[^libricochet]: https://openprivacy.ca/work/libricochet

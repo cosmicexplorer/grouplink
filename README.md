@@ -1,8 +1,10 @@
 grouplink
 =========
 
+*Note: the current development discussion lies in [the `Signal Extensions` section of the `low-level` subproject](low-level/src/signal-protocol-extensions.md#signal-extensions). The below is an overview of our larger goals with this project.*
+
 We want to build two prototypes of a cryptosystem to support **anonymous, group-fungible identities**. *Eventually,* our goal is to additionally support **forward-secret verification** and **legacy GPG interop**. We propose to build this on top of the Signal double ratchet [^double-ratchet] and X3DH algorithms [^x3dh] as follows:
-1. [*minimal:*](#minimal) use the Signal Protocol, adding CLI commands to create create and manipulate a special new class of *group-fungible* identities.
+1. [*minimal:*](#minimal) use the Signal Protocol, adding CLI commands to create and manipulate a special new class of *group-fungible* identities.
 2. [*gpg:*](#gpg) expose an *inter-group* message type which creates ephemeral gpg keys for signing, encryption, and/or decryption.
 3. [*full:*](#full) we perform a collaborative design process on what app(s) we want to build and what
 4. [*live:*](#live) make a p2p protocol, or a single server which supports our modified "grouplink" protocol.
