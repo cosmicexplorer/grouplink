@@ -680,7 +680,7 @@ checksum = "3cb00336871be5ed2c8ed44b60ae9959dc5b9f08539422ed43f09e34ecaeba21"
 [[package]]
 name = "libsignal-protocol"
 version = "0.1.0"
-source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=b669f2476b6eddf3137680593e4e11c219d74776#b669f2476b6eddf3137680593e4e11c219d74776"
+source = "git+https://github.com/cosmicexplorer/libsignal-client.git?rev=2e7d8ece66776b101c6e1a5f11ca595e3be45621#2e7d8ece66776b101c6e1a5f11ca595e3be45621"
 dependencies = [
  "aes",
  "aes-gcm-siv",
