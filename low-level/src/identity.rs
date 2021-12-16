@@ -107,8 +107,7 @@ impl ExternalIdentity {
               "failed ({:?}) to parse device id from a string used as a protobuf map key! was: '{}'",
               e, s
             ), s.to_string()))
-          })?
-          .into();
+          })?;
         Ok(Self {
           name: address_str.to_string(),
           device_id,
@@ -144,7 +143,7 @@ impl Spontaneous<()> for ExternalIdentity {
   fn generate<R: CryptoRng + Rng>(_params: (), csprng: &mut R) -> Self {
     let random_bytes: [u8; 16] = csprng.gen();
     let random_uuid: Uuid = Uuid::from_bytes(random_bytes);
-    let random_device: signal::DeviceId = csprng.gen::<u32>().into();
+    let random_device: signal::DeviceId = csprng.gen::<u32>();
     Self {
       name: random_uuid.to_string(),
       device_id: random_device,
@@ -387,7 +386,7 @@ pub fn generate_sender_cert(
       external.name.clone(),
       e164,
       *crypto.inner.public_key(),
-      external.device_id.into(),
+      external.device_id,
       ttl.calculate_expires_timestamp()?,
       inner,
       &server_key.private_key,
@@ -456,7 +455,7 @@ mod serde_impl {
         let address: signal::ProtocolAddress = value.into();
         proto::Address {
           name: Some(address.name().to_string()),
-          device_id: Some(address.device_id().into()),
+          device_id: Some(address.device_id()),
         }
       }
     }
@@ -471,14 +470,12 @@ mod serde_impl {
             format!("{:?}", proto_message),
           ))
         })?;
-        let device_id: signal::DeviceId = device_id
-          .ok_or_else(|| {
-            Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
-              "failed to find `device_id` field!".to_string(),
-              format!("{:?}", proto_message),
-            ))
-          })?
-          .into();
+        let device_id: signal::DeviceId = device_id.ok_or_else(|| {
+          Error::ProtobufDecodingError(ProtobufCodingFailure::OptionalFieldAbsent(
+            "failed to find `device_id` field!".to_string(),
+            format!("{:?}", proto_message),
+          ))
+        })?;
         Ok(Self { name, device_id })
       }
     }

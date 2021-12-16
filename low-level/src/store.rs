@@ -214,7 +214,7 @@ pub mod conversions {
         .collect();
       proto::IdentityKeyStore {
         signal_key_pair: Some(key_pair.serialize().into_vec()),
-        session_seed: Some(id.into()),
+        session_seed: Some(id),
         known_keys,
       }
     }
@@ -283,7 +283,7 @@ pub mod conversions {
         .into_iter()
         .map(|(id, record)| {
           Ok((
-            id.into(),
+            id,
             record
               .serialize()
               .expect("pre key record serialization error")
@@ -359,7 +359,7 @@ pub mod conversions {
         .into_iter()
         .map(|(id, record)| {
           Ok((
-            id.into(),
+            id,
             record
               .serialize()
               .expect("spk record serialize failed")
@@ -583,7 +583,7 @@ pub mod file_persistence {
       &self,
       ctx: signal::Context,
     ) -> Result<u32, signal::SignalProtocolError> {
-      self.inner.0.get_local_registration_id(ctx).await.into()
+      self.inner.0.get_local_registration_id(ctx).await
     }
     async fn save_identity(
       &mut self,
@@ -660,7 +660,7 @@ pub mod file_persistence {
       prekey_id: u32,
       ctx: signal::Context,
     ) -> Result<signal::PreKeyRecord, signal::SignalProtocolError> {
-      self.inner.0.get_pre_key(prekey_id.into(), ctx).await
+      self.inner.0.get_pre_key(prekey_id, ctx).await
     }
     async fn save_pre_key(
       &mut self,
@@ -668,18 +668,14 @@ pub mod file_persistence {
       record: &signal::PreKeyRecord,
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
-      self
-        .inner
-        .0
-        .save_pre_key(prekey_id.into(), record, ctx)
-        .await
+      self.inner.0.save_pre_key(prekey_id, record, ctx).await
     }
     async fn remove_pre_key(
       &mut self,
       prekey_id: u32,
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
-      self.inner.0.remove_pre_key(prekey_id.into(), ctx).await
+      self.inner.0.remove_pre_key(prekey_id, ctx).await
     }
   }
 
@@ -728,11 +724,7 @@ pub mod file_persistence {
       signed_prekey_id: u32,
       ctx: signal::Context,
     ) -> Result<signal::SignedPreKeyRecord, signal::SignalProtocolError> {
-      self
-        .inner
-        .0
-        .get_signed_pre_key(signed_prekey_id.into(), ctx)
-        .await
+      self.inner.0.get_signed_pre_key(signed_prekey_id, ctx).await
     }
     async fn save_signed_pre_key(
       &mut self,
@@ -743,7 +735,7 @@ pub mod file_persistence {
       self
         .inner
         .0
-        .save_signed_pre_key(signed_prekey_id.into(), record, ctx)
+        .save_signed_pre_key(signed_prekey_id, record, ctx)
         .await
     }
   }

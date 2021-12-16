@@ -364,7 +364,7 @@ impl PreKeyBundle {
     } = request;
     let inner = signal::PreKeyBundle::new(
       seed.into(),
-      destination.device_id.into(),
+      destination.device_id,
       Some((one_time.id.into(), *one_time.pair.public_key())),
       signed.id.into(),
       *signed.pair.public_key(),
@@ -991,7 +991,7 @@ impl SealedSenderMessageResult {
       get_timestamp(),
       local_e164,
       local_uuid,
-      local_device_id.into(),
+      local_device_id,
       id_store,
       session_store,
       pre_key_store,
@@ -1007,7 +1007,7 @@ impl SealedSenderMessageResult {
     let sender = SealedSenderIdentity {
       inner: ExternalIdentity {
         name: sender_uuid,
-        device_id: sender_device_id.into(),
+        device_id: sender_device_id,
       },
       e164: sender_e164,
     };
@@ -1067,7 +1067,7 @@ impl SealedSenderMessageResult {
       get_timestamp(),
       local_e164,
       local_uuid,
-      local_device_id.into(),
+      local_device_id,
       id_store,
       session_store,
       pre_key_store,
@@ -1083,7 +1083,7 @@ impl SealedSenderMessageResult {
     let sender = SealedSenderIdentity {
       inner: ExternalIdentity {
         name: sender_uuid,
-        device_id: sender_device_id.into(),
+        device_id: sender_device_id,
       },
       e164: sender_e164,
     };
@@ -1243,10 +1243,7 @@ mod serde_impl {
         proto::PreKeyBundle {
           destination: Some(destination.into()),
           registration_id: Some(inner.registration_id().expect("missing registration_id")),
-          pre_key_id: inner
-            .pre_key_id()
-            .expect("missing pre_key_id")
-            .map(|id| id.into()),
+          pre_key_id: inner.pre_key_id().expect("missing pre_key_id"),
           pre_key_public: inner
             .pre_key_public()
             .expect("missing pre_key_public")
@@ -1254,8 +1251,7 @@ mod serde_impl {
           signed_pre_key_id: Some(
             inner
               .signed_pre_key_id()
-              .expect("missing signed_pre_key_id")
-              .into(),
+              .expect("missing signed_pre_key_id"),
           ),
           signed_pre_key_public: Some(
             inner
@@ -1358,7 +1354,7 @@ mod serde_impl {
           destination: destination.clone(),
           inner: signal::PreKeyBundle::new(
             registration_id,
-            destination.device_id.into(),
+            destination.device_id,
             pre_key.map(|(id, pub_key)| (id.into(), pub_key)),
             signed_pre_key_id.into(),
             signed_pre_key_public,
