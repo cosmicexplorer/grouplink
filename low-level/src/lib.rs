@@ -182,6 +182,7 @@
 /* Arc<Mutex> can be more clear than needing to grok Orderings: */
 #![allow(clippy::mutex_atomic)]
 
+pub mod anonymity;
 pub mod error;
 pub mod identity;
 pub mod message;

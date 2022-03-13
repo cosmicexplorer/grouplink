@@ -1,8 +1,9 @@
-/* Copyright 2021 Danny McClanahan */
+/* Copyright 2021-2022 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 fn main() {
   let protos = [
+    "src/anonymity.proto",
     "src/identity.proto",
     "src/message.proto",
     "src/session.proto",
