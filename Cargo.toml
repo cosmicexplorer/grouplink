@@ -22,11 +22,9 @@ members = [
     ".",
     "low-level",
     "cli",
-    "anonymity",
 ]
 default-members = [
     # ".",
     "low-level",
     # "cli",
-    "anonymity",
 ]

@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+/* Copyright 2022 Danny McClanahan */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+package grouplink.proto.anonymity;
+
+import "message.proto";
+
+/* Serialization of [super::AnonymousMessage]. */
+message AnonymousMessage {
+  /* TODO */
+}
