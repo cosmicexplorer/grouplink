@@ -1,4 +1,4 @@
-/* Copyright 2021 Danny McClanahan */
+/* Copyright 2021-2022 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 //! [Persistent] versions of underlying signal store implementations
@@ -113,7 +113,7 @@ pub mod conversions {
   use crate::identity::ExternalIdentity;
   use crate::serde;
 
-  use libsignal_protocol as signal;
+  use libsignal_protocol::{self as signal, ViaProtobuf};
   use uuid::Uuid;
 
   use std::borrow::Cow;
@@ -381,15 +381,15 @@ pub mod conversions {
 
   /// Implements [signal::SessionStore].
   #[derive(Debug, Clone, Default)]
-  pub struct SStore(pub signal::InMemSessionStore);
+  pub struct SStore(pub signal::InMemSessionStore<signal::StandardSessionStructure>);
 
-  impl From<signal::InMemSessionStore> for SStore {
-    fn from(value: signal::InMemSessionStore) -> Self {
+  impl From<signal::InMemSessionStore<signal::StandardSessionStructure>> for SStore {
+    fn from(value: signal::InMemSessionStore<signal::StandardSessionStructure>) -> Self {
       Self(value)
     }
   }
 
-  impl From<SStore> for signal::InMemSessionStore {
+  impl From<SStore> for signal::InMemSessionStore<signal::StandardSessionStructure> {
     fn from(value: SStore) -> Self {
       value.0
     }
@@ -399,7 +399,9 @@ pub mod conversions {
     type Source = SStore;
   }
 
-  impl TryFrom<proto::SessionStore> for signal::InMemSessionStore {
+  impl TryFrom<proto::SessionStore>
+    for signal::InMemSessionStore<signal::StandardSessionStructure>
+  {
     type Error = Error;
     fn try_from(value: proto::SessionStore) -> Result<Self, Error> {
       let proto::SessionStore { sessions } = value;
@@ -408,36 +410,34 @@ pub mod conversions {
         .map(|(address, record)| {
           let address: signal::ProtocolAddress =
             ExternalIdentity::from_unambiguous_string(&address)?.into();
-          let record = signal::SessionRecord::deserialize(&record)?;
+          let record =
+            signal::SessionRecord::<signal::StandardSessionStructure>::deserialize(&record)?;
           Ok((address, record))
         })
         .collect::<Result<HashMap<_, _>, Error>>()?;
-      Ok(signal::InMemSessionStore { sessions })
+      Ok(signal::InMemSessionStore::<signal::StandardSessionStructure> { sessions })
     }
   }
 
   impl TryFrom<proto::SessionStore> for SStore {
     type Error = Error;
     fn try_from(value: proto::SessionStore) -> Result<Self, Error> {
-      let store: signal::InMemSessionStore = value.try_into()?;
+      let store: signal::InMemSessionStore<signal::StandardSessionStructure> =
+        value.try_into()?;
       Ok(store.into())
     }
   }
 
-  impl From<signal::InMemSessionStore> for proto::SessionStore {
-    fn from(value: signal::InMemSessionStore) -> Self {
-      let signal::InMemSessionStore { sessions } = value;
+  impl From<signal::InMemSessionStore<signal::StandardSessionStructure>>
+    for proto::SessionStore
+  {
+    fn from(value: signal::InMemSessionStore<signal::StandardSessionStructure>) -> Self {
+      let signal::InMemSessionStore::<signal::StandardSessionStructure> { sessions } = value;
       let sessions: HashMap<String, Vec<u8>> = sessions
         .into_iter()
         .map(|(address, record)| {
           let address_str = ExternalIdentity::from(address).as_unambiguous_string();
-          Ok((
-            address_str,
-            record
-              .serialize()
-              .expect("sstore record serialize error")
-              .to_vec(),
-          ))
+          Ok((address_str, record.serialize().to_vec()))
         })
         .collect::<Result<HashMap<_, _>, Error>>()
         .expect("sstore collect record error");
@@ -447,7 +447,7 @@ pub mod conversions {
 
   impl From<SStore> for proto::SessionStore {
     fn from(value: SStore) -> Self {
-      let store: signal::InMemSessionStore = value.into();
+      let store: signal::InMemSessionStore<signal::StandardSessionStructure> = value.into();
       store.into()
     }
   }
@@ -780,17 +780,21 @@ pub mod file_persistence {
   /* Forwards to inner. */
   #[async_trait(?Send)]
   impl signal::SessionStore for FileSessionStore {
+    type S = signal::StandardSessionStructure;
     async fn load_session(
       &self,
       address: &signal::ProtocolAddress,
       ctx: signal::Context,
-    ) -> Result<Option<signal::SessionRecord>, signal::SignalProtocolError> {
+    ) -> Result<
+      Option<signal::SessionRecord<signal::StandardSessionStructure>>,
+      signal::SignalProtocolError,
+    > {
       self.inner.0.load_session(address, ctx).await
     }
     async fn store_session(
       &mut self,
       address: &signal::ProtocolAddress,
-      record: &signal::SessionRecord,
+      record: &signal::SessionRecord<signal::StandardSessionStructure>,
       ctx: signal::Context,
     ) -> Result<(), signal::SignalProtocolError> {
       self.inner.0.store_session(address, record, ctx).await
@@ -800,7 +804,10 @@ pub mod file_persistence {
       &self,
       addresses: &[&signal::ProtocolAddress],
       ctx: signal::Context,
-    ) -> Result<Vec<signal::SessionRecord>, signal::SignalProtocolError> {
+    ) -> Result<
+      Vec<signal::SessionRecord<signal::StandardSessionStructure>>,
+      signal::SignalProtocolError,
+    > {
       self.inner.0.load_existing_sessions(addresses, ctx).await
     }
   }
@@ -1126,7 +1133,7 @@ pub mod in_memory_store {
   }
 
   #[async_trait]
-  impl Persistent<()> for signal::InMemSessionStore {
+  impl Persistent<()> for signal::InMemSessionStore<signal::StandardSessionStructure> {
     type Error = Error;
     async fn persist(&mut self) -> Result<(), Self::Error> {
       Ok(())
@@ -1183,7 +1190,7 @@ pub mod in_memory_store {
 
   pub type InMemStore = super::Store<
     (),
-    signal::InMemSessionStore,
+    signal::InMemSessionStore<signal::StandardSessionStructure>,
     signal::InMemPreKeyStore,
     signal::InMemSignedPreKeyStore,
     signal::InMemIdentityKeyStore,
@@ -1195,7 +1202,7 @@ pub mod in_memory_store {
       let CryptographicIdentity { inner, seed } = crypto;
       let identity_store = signal::InMemIdentityKeyStore::new(inner, seed.into());
       Self {
-        session_store: signal::InMemSessionStore::new(),
+        session_store: signal::InMemSessionStore::<signal::StandardSessionStructure>::new(),
         pre_key_store: signal::InMemPreKeyStore::new(),
         signed_pre_key_store: signal::InMemSignedPreKeyStore::new(),
         identity_store,
@@ -1207,7 +1214,7 @@ pub mod in_memory_store {
 
   pub type InMemStoreWrapper = StoreWrapper<
     (),
-    signal::InMemSessionStore,
+    signal::InMemSessionStore<signal::StandardSessionStructure>,
     signal::InMemPreKeyStore,
     signal::InMemSignedPreKeyStore,
     signal::InMemIdentityKeyStore,

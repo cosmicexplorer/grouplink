@@ -1,4 +1,4 @@
-/* Copyright 2021 Danny McClanahan */
+/* Copyright 2021-2022 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 //! Wrap all stateful [libsignal_protocol] operations in immutable stateless objects!
@@ -587,7 +587,7 @@ impl SealedSenderMessage {
 
     let encrypted_message = signal::sealed_sender_multi_recipient_encrypt_full(
       &[&dest],
-      signal::SealedSenderDestinationSessions::CreateSessions,
+      signal::SealedSenderDestinationSessions::<signal::StandardSessionStructure>::CreateSessions,
       &usmc,
       id_store,
       None,
