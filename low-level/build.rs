@@ -3,7 +3,6 @@
 
 fn main() {
   let protos = [
-    "src/anonymity.proto",
     "src/identity.proto",
     "src/message.proto",
     "src/session.proto",

@@ -9,7 +9,8 @@ import "session.proto";
 
 /* All the types of communications that can be sent between identities in the [grouplink protocol](crate).
  *
- * Intentionally selected as a strict subset of the types of messages supported by the underlying [libsignal_protocol] crate.
+ * Intentionally **(TODO: why? link to our signal protocol extensions doc)** selected as a strict
+ * subset of the types of messages supported by the underlying [libsignal_protocol] crate.
  */
 message Message {
   /* The parent [super::Message] struct contains any of an enumeration of other messages. */
