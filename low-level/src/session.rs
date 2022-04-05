@@ -587,7 +587,7 @@ impl SealedSenderMessage {
 
     let encrypted_message = signal::sealed_sender_multi_recipient_encrypt_full(
       &[&dest],
-      signal::SealedSenderDestinationSessions::<signal::StandardSessionStructure>::CreateSessions,
+      signal::SealedSenderDestinationSessions::<signal::HeaderEncryptedSessionStructure>::CreateSessions,
       &usmc,
       id_store,
       None,
