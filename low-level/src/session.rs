@@ -327,31 +327,13 @@ impl PreKeyBundleRequest {
 /// This object is generated from a [SignedPreKey] and a [OneTimePreKey].
 ///
 /// [X3DH]: https://signal.org/docs/specifications/x3dh/#publishing-keys
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreKeyBundle {
   /// From [PreKeyBundleRequest::destination].
   pub destination: ExternalIdentity,
   /// Underlying concept exposed by [libsignal_protocol].
   pub inner: signal::PreKeyBundle,
 }
-
-/// This is laborious and cannot be `derive`d because [signal::PreKeyBundle] does not implement
-/// [PartialEq] itself.
-impl PartialEq for PreKeyBundle {
-  fn eq(&self, other: &Self) -> bool {
-    (self.destination == other.destination)
-      && (self.inner.registration_id().ok() == other.inner.registration_id().ok())
-      && (self.inner.device_id().ok() == other.inner.device_id().ok())
-      && (self.inner.pre_key_id().ok() == other.inner.pre_key_id().ok())
-      && (self.inner.pre_key_public().ok() == other.inner.pre_key_public().ok())
-      && (self.inner.signed_pre_key_id().ok() == other.inner.signed_pre_key_id().ok())
-      && (self.inner.signed_pre_key_public().ok() == other.inner.signed_pre_key_public().ok())
-      && (self.inner.signed_pre_key_signature().ok() == other.inner.signed_pre_key_signature().ok())
-      && (self.inner.identity_key().ok() == other.inner.identity_key().ok())
-  }
-}
-
-impl Eq for PreKeyBundle {}
 
 impl PreKeyBundle {
   /// Generates a new pre-key bundle from the specifications of `request`.
