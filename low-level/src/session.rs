@@ -872,7 +872,7 @@ where
 /// ).await?;
 ///
 /// // Decrypt the sealed-sender message.
-/// let message_result = decrypt_message(
+/// let bob_decrypted_message = decrypt_message(
 ///   SealedSenderDecryptionRequest {
 ///     inner: initial_message,
 ///     local_identity: bob_client.clone(),
@@ -880,10 +880,10 @@ where
 ///   &mut bob_store,
 /// ).await?;
 ///
-/// assert!(message_result.sender == alice_client.stripped_e164());
-/// assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
+/// assert!(bob_decrypted_message.sender == alice_client.stripped_e164());
+/// assert!("asdf" == std::str::from_utf8(bob_decrypted_message.plaintext.as_ref()).unwrap());
 ///
-/// // Now send a message back to Alice.
+/// // Now send a follow-up message back to Alice.
 /// # #[allow(unused_variables)]
 /// let bob_follow_up = encrypt_followup_message(
 ///   SealedSenderFollowupMessageRequest {
@@ -894,6 +894,18 @@ where
 ///   },
 ///   &mut bob_store,
 /// ).await?;
+///
+/// // Now Alice decrypts the follow-up message.
+/// let alice_decrypted_followup = decrypt_message(
+///   SealedSenderDecryptionRequest {
+///     inner: bob_follow_up,
+///     local_identity: alice_client.clone(),
+///   },
+///   &mut alice_store,
+/// ).await?;
+///
+/// assert!(alice_decrypted_followup.sender == bob_client.stripped_e164());
+/// assert!("oh ok" == std::str::from_utf8(alice_decrypted_followup.plaintext.as_ref()).unwrap());
 ///
 /// # Ok(())
 /// # }) // async
