@@ -676,9 +676,115 @@ impl SealedSenderMessage {
   }
 }
 
-/// ???
+/// Process a [SealedSenderPreKeyBundleRequest] into a [PreKeyBundle], then encrypt and encode with
+/// [SealedSenderMessage::intern_pre_key_bundle].
 ///
+/// Verify that a pre-key bundle message can be created, processed, and then successfully used to
+/// initiate a message chain:
 ///```
+/// # fn main() -> Result<(), grouplink_low_level::error::Error> {
+/// use grouplink_low_level::{*, serde::*};
+/// use libsignal_protocol::{IdentityKey, IdentityKeyStore};
+/// # use futures::executor::block_on;
+/// use std::path::PathBuf;
+/// # use std::env::set_current_dir;
+/// # use tempdir::TempDir;
+/// # let tmp_dir = TempDir::new("doctest-cwd").unwrap();
+/// # set_current_dir(tmp_dir.path()).unwrap();
+/// # block_on(async {
+///
+/// // Create a new identity.
+/// let alice = generate_identity();
+/// let alice_client = generate_sealed_sender_identity(alice.external.clone());
+///
+/// // Create a mutable store.
+/// let mut alice_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("alice"), // Subdirectory of cwd.
+///     id: alice.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Create a destination identity.
+/// let bob = generate_identity();
+/// let bob_client = generate_sealed_sender_identity(bob.external.clone());
+/// let mut bob_store =
+///   initialize_file_backed_store(DirectoryStoreRequest {
+///     path: PathBuf::from("bob"), // Subdirectory of cwd.
+///     id: bob.crypto,
+///     behavior: ExtractionBehavior::OverwriteWithDefault,
+///   }).await?;
+///
+/// // Alice sends a message to Bob to kick off a message chain, which requires a pre-key bundle.
+/// // See https://signal.org/docs/specifications/x3dh/#publishing-keys.
+/// let bob_signed_pre_key = generate_signed_pre_key(&mut bob_store).await?;
+/// let bob_one_time_pre_key = generate_one_time_pre_key(&mut bob_store).await?;
+///
+/// // Generate the pre-key bundle.
+/// let bob_pre_key_bundle = generate_pre_key_bundle(bob.external.clone(),
+///                                                  bob_signed_pre_key,
+///                                                  bob_one_time_pre_key,
+///                                                  &bob_store).await?;
+///
+/// // Encrypt the pre-key bundle.
+/// assert!(bob_store.identity_store.save_identity(&alice.external.clone().into(),
+///                                                &IdentityKey::new(*alice.crypto.inner.public_key()),
+///                                                None).await? == false);
+///
+/// let bundle_message = encrypt_pre_key_bundle_message(
+///   SealedSenderPreKeyBundleRequest {
+///     bundle: bob_pre_key_bundle,
+///     sender_cert: generate_sender_cert(bob_client.stripped_e164(), bob.crypto,
+///                                       SenderCertTTL::default())?,
+///     destination: alice.external.clone(),
+///   },
+///   &mut bob_store,
+/// ).await?;
+/// // let encoded_pre_key_bundle: Box<[u8]> = Message::Bundle(bob_pre_key_bundle).try_into()?;
+///
+/// // Decrypt the pre-key bundle.
+/// let bundle = decrypt_pre_key_message(
+///   SealedSenderDecryptionRequest {
+///     inner: bundle_message,
+///     local_identity: alice_client.clone(),
+///   },
+///   &mut alice_store,
+/// ).await?;
+/// let bundle: PreKeyBundle =
+///   serde::Protobuf::<PreKeyBundle, session::proto::PreKeyBundle>::deserialize(
+///     &bundle.plaintext)?;
+///
+/// // Encrypt a message.
+/// let initial_message = encrypt_initial_message(
+///   SealedSenderMessageRequest {
+///     // bundle: Message::try_from(encoded_pre_key_bundle.as_ref())?.assert_bundle()?,
+///     bundle,
+///     sender_cert: generate_sender_cert(alice_client.stripped_e164(), alice.crypto,
+///                                       SenderCertTTL::default())?,
+///     plaintext: "asdf".as_bytes(),
+///   },
+///   &mut alice_store,
+/// ).await?;
+/// let encoded_sealed_sender_message: Box<[u8]> =
+///   serde::Protobuf::<Message, message::proto::Message>::new(Message::Sealed(initial_message))
+///     .serialize();
+///
+/// // Decrypt the sealed-sender message.
+/// let message_result = decrypt_message(
+///   SealedSenderDecryptionRequest {
+///     inner: serde::Protobuf::<Message, message::proto::Message>::deserialize(
+///       &encoded_sealed_sender_message)?.assert_sealed()?,
+///     local_identity: bob_client.clone(),
+///   },
+///   &mut bob_store,
+/// ).await?;
+///
+/// assert!(message_result.sender == alice_client.stripped_e164());
+/// assert!("asdf" == std::str::from_utf8(message_result.plaintext.as_ref()).unwrap());
+///
+/// # Ok(())
+/// # }) // async
+/// # }
 ///```
 pub async fn encrypt_pre_key_bundle_message<
   Record,
