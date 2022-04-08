@@ -9,11 +9,11 @@ pub mod proto {
   /* Ensure the generated identity.proto outputs are available under [super::identity] within the
    * sub-module also named "proto". */
   pub use crate::identity::proto as identity;
+  #[doc(inline)]
+  pub use proto::*;
   mod proto {
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.session.rs"));
   }
-  #[doc(inline)]
-  pub use proto::*;
 }
 
 use crate::error::{Error, ProtobufCodingFailure};
@@ -1322,11 +1322,13 @@ where
   .await
 }
 
+pub use serde_impl::*;
 mod serde_impl {
   use super::*;
   use crate::{error::Error, serde};
   use std::convert::{AsRef, TryFrom, TryInto};
 
+  pub use pre_key_bundle::*;
   mod pre_key_bundle {
     use super::*;
 
@@ -1464,8 +1466,8 @@ mod serde_impl {
       }
     }
   }
-  pub use pre_key_bundle::*;
 
+  pub use sealed_sender_message::*;
   mod sealed_sender_message {
     use super::*;
 
@@ -1518,9 +1520,7 @@ mod serde_impl {
       }
     }
   }
-  pub use sealed_sender_message::*;
 }
-pub use serde_impl::*;
 
 #[cfg(test)]
 pub mod proptest_strategies {

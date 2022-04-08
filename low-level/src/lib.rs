@@ -60,9 +60,11 @@
 //!                                                  &bob_store).await?;
 //!
 //! // Encrypt the pre-key bundle.
-//! assert!(bob_store.identity_store.save_identity(&alice.external.clone().into(),
-//!                                                &IdentityKey::new(*alice.crypto.inner.public_key()),
-//!                                                None).await? == false);
+//! assert!(bob_store.identity_store.save_identity(
+//!           &alice.external.clone().into(),
+//!           &IdentityKey::new(*alice.crypto.inner.public_key()),
+//!           None)
+//!         .await? == false);
 //!
 //! let bundle_message = encrypt_pre_key_bundle_message(
 //!   SealedSenderPreKeyBundleRequest {

@@ -9,11 +9,11 @@ pub mod proto {
   /* Ensure the generated identity.proto outputs are available under `super::identity` within the
    * private sub-module named `proto`. */
   pub use crate::identity::proto as identity;
+  #[doc(inline)]
+  pub use proto::*;
   mod proto {
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.store.rs"));
   }
-  #[doc(inline)]
-  pub use proto::*;
 }
 
 use crate::error::Error;

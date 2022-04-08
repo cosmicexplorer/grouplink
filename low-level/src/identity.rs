@@ -1,4 +1,4 @@
-/* Copyright 2021 Danny McClanahan */
+/* Copyright 2021-2022 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 //! Define the atomic forms of identity in the [grouplink protocol](crate).
@@ -396,11 +396,13 @@ pub fn generate_sender_cert(
   })
 }
 
+pub use serde_impl::*;
 mod serde_impl {
   use super::*;
   use crate::{error::Error, serde};
   use std::convert::{AsRef, TryFrom, TryInto};
 
+  pub use crypto_id::*;
   mod crypto_id {
     use super::*;
 
@@ -441,8 +443,8 @@ mod serde_impl {
       }
     }
   }
-  pub use crypto_id::*;
 
+  pub use external_id::*;
   mod external_id {
     use super::*;
 
@@ -480,8 +482,8 @@ mod serde_impl {
       }
     }
   }
-  pub use external_id::*;
 
+  pub use id::*;
   mod id {
     use super::*;
 
@@ -523,8 +525,8 @@ mod serde_impl {
       }
     }
   }
-  pub use id::*;
 
+  pub use public_key::*;
   mod public_key {
     use super::*;
 
@@ -571,8 +573,8 @@ mod serde_impl {
       }
     }
   }
-  pub use public_key::*;
 
+  pub use sealed_sender_identity::*;
   mod sealed_sender_identity {
     use super::*;
 
@@ -605,12 +607,13 @@ mod serde_impl {
       }
     }
   }
-  pub use sealed_sender_identity::*;
 
+  pub use fingerprints::*;
   mod fingerprints {
     use crate::serde;
     use libsignal_protocol as signal;
 
+    pub use public_key::*;
     mod public_key {
       use super::*;
       impl From<signal::IdentityKey>
@@ -622,8 +625,8 @@ mod serde_impl {
       }
       impl serde::fingerprinting::Fingerprintable for signal::IdentityKey {}
     }
-    pub use public_key::*;
 
+    pub use private_key::*;
     mod private_key {
       use super::*;
       impl From<signal::IdentityKeyPair>
@@ -635,11 +638,8 @@ mod serde_impl {
       }
       impl serde::fingerprinting::Fingerprintable for signal::IdentityKeyPair {}
     }
-    pub use private_key::*;
   }
-  pub use fingerprints::*;
 }
-pub use serde_impl::*;
 
 #[cfg(test)]
 pub mod proptest_strategies {

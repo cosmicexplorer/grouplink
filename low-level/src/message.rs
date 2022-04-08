@@ -1,4 +1,4 @@
-/* Copyright 2021 Danny McClanahan */
+/* Copyright 2021-2022 Danny McClanahan */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 //! Define the atomic types of communications between individual [identity](crate::identity)
@@ -10,12 +10,12 @@ pub mod proto {
    * sub-module also named "proto". */
   pub use crate::identity::proto as identity;
   pub use crate::session::proto as session;
+  #[doc(inline)]
+  pub use proto::*;
   mod proto {
     #![allow(missing_docs)]
     include!(concat!(env!("OUT_DIR"), "/grouplink.proto.message.rs"));
   }
-  #[doc(inline)]
-  pub use proto::*;
 }
 
 use crate::error::ProtobufCodingFailure;
@@ -67,11 +67,13 @@ impl Message {
   }
 }
 
+pub use serde_impl::*;
 mod serde_impl {
   use super::*;
   use crate::{error::Error, serde};
   use std::convert::{TryFrom, TryInto};
 
+  pub use message::*;
   mod message {
     use super::*;
 
@@ -119,9 +121,7 @@ mod serde_impl {
       }
     }
   }
-  pub use message::*;
 }
-pub use serde_impl::*;
 
 /* #[cfg(test)] */
 /* pub mod test { */
