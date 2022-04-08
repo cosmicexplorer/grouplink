@@ -100,7 +100,7 @@ impl SignedPreKey {
       .get_identity_key_pair(None)
       .await?
       .private_key()
-      .calculate_signature(&pub_signed_prekey, csprng)?;
+      .calculate_signature(&pub_signed_prekey, csprng);
     id_store.persist().await?;
 
     let inner =
@@ -463,8 +463,7 @@ pub async fn generate_pre_key_bundle<
 /// decrypt and read. *See [SealedSenderMessage::intern_pre_key_bundle].*
 #[derive(Debug, Clone)]
 pub struct SealedSenderPreKeyBundleRequest {
-  /// Gets directly encoded into [SealedSenderMessageRequest::bundle] (after being encrypted in
-  /// transit).
+  /// Gets directly encoded into [SealedSenderMessageRequest::bundle].
   pub bundle: PreKeyBundle,
   /// Newly generated certificate with cryptographic information to encrypt this message's sender.
   pub sender_cert: SenderCert,
